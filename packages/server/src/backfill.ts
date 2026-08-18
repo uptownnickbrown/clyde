@@ -61,7 +61,7 @@ export function previewOf(content: unknown): string | undefined {
   return undefined;
 }
 
-function truncate(s: string, n: number): string {
+export function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + '…' : s;
 }
 

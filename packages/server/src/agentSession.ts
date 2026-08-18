@@ -16,7 +16,7 @@ import type {
 import { ClydeStore } from './store.js';
 import { GitWatcher } from './git.js';
 import { slog } from './log.js';
-import { parseSidebarMarker, planBackfill, previewOf, transcriptPathFor } from './backfill.js';
+import { parseSidebarMarker, planBackfill, previewOf, transcriptPathFor, truncate } from './backfill.js';
 
 /** Standing orders appended to the system prompt: the Clyde protocol. */
 const CLYDE_PROTOCOL = `
