@@ -87,8 +87,8 @@
   {
     "id": "15",
     "subject": "Plumb the real AskUserQuestion tool (R10)",
-    "status": "pending",
-    "detail": "Add the \"ask\" permission rule so canUseTool fires under bypassPermissions; render 1–4 questions as an option card (2–4 options, Other free-text, multiSelect, previewFormat html); return {behavior:\"allow\", updatedInput:{questions, answers}} keyed by exact question text; blocking mode for load-bearing forks, non-blocking experiment otherwise; standing orders: ask early with a recommendation; distill answers into DECISIONS/tasks. Not available in subagents."
+    "status": "completed",
+    "detail": "Add the \"ask\" permission rule so canUseTool fires under bypassPermissions; render 1–4 questions as an option card (2–4 options, Other free-text, multiSelect, previewFormat html); return {behavior:\"allow\", updatedInput:{questions, answers}} keyed by exact question text; blocking mode for load-bearing forks, non-blocking experiment otherwise; standing orders: ask early with a recommendation; distill answers into DECISIONS/tasks. Not available in subagents. UI per the attention-surface ruling: the question card renders in the RIGHT WORKBENCH (first test of that workflow), attention-badged, not as conversation clutter."
   },
   {
     "id": "16",
@@ -100,7 +100,7 @@
     "id": "17",
     "subject": "Backfill event-log holes after restarts (lost turn tails)",
     "status": "pending",
-    "detail": "A restart can kill the server before it consumes the tail of the SDK stream: the agent's last messages/tool calls execute but never reach events.jsonl, leaving a hole in the document (observed: a sidebar reply + TaskCreate #16 vanished; user saw it stream live, then it disappeared on reload). Fix: on resume boot, read the SDK's own session transcript (~/.claude/projects/<hash>/<sessionId>.jsonl), find messages after the last logged event, and translate+append them before starting the new query. Also: sequence intentional restarts (like the tasks.json reload touch) behind stream quiescence."
+    "detail": "PRIORITY RAISED 2026-08-18: second confirmed loss — the attention-surface acknowledgement prose vanished for the user during the #15 restart window; losing acknowledgements erodes trust in the document. A restart can kill the server before it consumes the tail of the SDK stream: the agent's last messages/tool calls execute but never reach events.jsonl, leaving a hole in the document (observed: a sidebar reply + TaskCreate #16 vanished; user saw it stream live, then it disappeared on reload). Fix: on resume boot, read the SDK's own session transcript (~/.claude/projects/<hash>/<sessionId>.jsonl), find messages after the last logged event, and translate+append them before starting the new query. Also: sequence intentional restarts (like the tasks.json reload touch) behind stream quiescence."
   },
   {
     "id": "18",
@@ -114,6 +114,12 @@
     "subject": "Review ceremony: intake mode → distill → ask → Tasks with provenance",
     "status": "pending",
     "detail": "Per the intake-ceremony decision (DECISIONS.md 2026-08-18). Flow: (1) \"Start review\" composer mode AND agent auto-detect of unprompted feedback dumps; (2) raw dump saved verbatim to .clyde/reviews/<date>-<slug>.md as provenance; (3) agent distills to numbered items, echoes them back; (4) clarifying questions via AskUserQuestion (#15 is a prerequisite); (5) confirmed items become Tasks carrying source (review file + item), batch id, and a declined-with-reasons state (TaskItem additions in shared); (6) Reviews panel becomes a burn-down lens over task batches instead of parsing markdown checkboxes. Subsumes the data model of #13 — do them together."
+  },
+  {
+    "id": "21",
+    "subject": "Workbench restructure: attention surface right, reference tabs left",
+    "status": "pending",
+    "detail": "Per the attention-surface ruling (2026-08-18): demote Goal/Scope to a left-rail tab; split \"Panels\" — QA artifact galleries (image-gallery/markdown/metrics) become a left \"Artifacts\" tab, while the right workbench carries only needs-your-eyes-now state: question cycles (#15), review intake (#19), and model-pushed live exhibits with attention badges + dismiss. Conversation stays centered."
   },
   {
     "id": "20",

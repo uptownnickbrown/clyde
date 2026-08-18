@@ -176,6 +176,9 @@ export async function startServer(projectRoot: string, port: number, freshSessio
         case 'resolve_thread':
           session.resolveThread(msg.threadId);
           break;
+        case 'answer_question':
+          session.answerQuestion(msg.questionId, msg.answers, msg.response);
+          break;
         case 'withdraw_queued':
           session.withdraw(msg.queuedId);
           break;

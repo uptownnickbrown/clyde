@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useClyde } from './store';
+import { QuestionsPanel, deriveQuestions } from './components/Questions';
 import { Conversation } from './components/Conversation';
 import { Composer } from './components/Composer';
 import { WorkBar } from './components/WorkBar';
@@ -21,7 +22,7 @@ import {
 // Shell layout (Design Vision): stable top bar · icon rail · one capability panel ·
 // conversation center · contextual right workbench. Panels resize and remember.
 
-type WbTab = 'goal' | 'panels';
+type WbTab = 'questions' | 'goal' | 'panels';
 
 const store = {
   get: (k: string, fallback: string) => localStorage.getItem(k) ?? fallback,
@@ -83,6 +84,16 @@ export default function App() {
   }, [state.events]);
 
   const status = state.connected ? state.status : 'disconnected';
+
+  // The workbench is the attention surface: a new pending question flips it open
+  // onto the Questions tab (without persisting over the user's chosen default).
+  const questions = useMemo(() => deriveQuestions(state.events), [state.events]);
+  const pendingQuestionId = questions.pending?.questionId ?? null;
+  useEffect(() => {
+    if (!pendingQuestionId) return;
+    setWbTab('questions');
+    setRightOpen(true);
+  }, [pendingQuestionId]);
 
   return (
     <div className="app">
@@ -152,7 +163,7 @@ export default function App() {
             <div className="resizer" onMouseDown={dragRight} title="Drag to resize" />
             <aside className="right-panel" style={{ width: rightW }}>
               <nav className="wb-tabs">
-                {(['goal', 'panels'] as WbTab[]).map((t) => (
+                {(['questions', 'goal', 'panels'] as WbTab[]).map((t) => (
                   <button
                     key={t}
                     className={wbTab === t ? 'active' : ''}
@@ -161,7 +172,8 @@ export default function App() {
                       store.set('clyde.wbTab', t);
                     }}
                   >
-                    {t === 'goal' ? 'Goal' : 'Panels'}
+                    {t === 'questions' ? 'Questions' : t === 'goal' ? 'Goal' : 'Panels'}
+                    {t === 'questions' && questions.pending && <span className="wb-attn" />}
                   </button>
                 ))}
                 <button
@@ -176,6 +188,7 @@ export default function App() {
                 </button>
               </nav>
               <div className="panel-scroll">
+                {wbTab === 'questions' && <QuestionsPanel events={state.events} send={send} />}
                 {wbTab === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
                 {wbTab === 'panels' && <PushedPanels panels={state.panels} />}
               </div>

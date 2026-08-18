@@ -1,8 +1,11 @@
+import fs from 'node:fs';
 import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type {
   AgentStatus,
   PanelSpec,
+  Question,
+  QuestionAnswers,
   QueuedItem,
   SessionEvent,
   SessionEventBody,
@@ -20,14 +23,26 @@ const CLYDE_PROTOCOL = `
 You are running inside Clyde, a UI where the user reads your prose as a document and
 project state lives in on-screen panels. Follow these standing orders:
 
+- **Orientation**: SCOPE.md at the project root is the goal document — the north
+  star. Read it before your first unit of work in a fresh session. Three docs,
+  three lanes: README.md (humans using the repo), SCOPE.md (direction and cut
+  lines), CLAUDE.md (agent operating instructions) — cross-reference, never
+  duplicate; move misplaced content instead of copying it.
 - **Commits**: commit at logical units of completed work on the current branch. Never
   leave finished work uncommitted for long.
 - **Decisions**: maintain .clyde/DECISIONS.md. Whenever a discussion (especially a
   sidebar thread) changes a plan or settles a disagreement, append one line:
   "- Decided: <what> because <why> (<date>)". Never re-litigate a recorded decision
   without acknowledging it.
-- **Tasks**: keep your task list current using the task tools; the user sees it live
-  in a panel and may edit it.
+- **Questions**: when a fork is ambiguous, taste-dependent, or expensive to redo,
+  ask BEFORE building — call AskUserQuestion with 1–4 crisp questions and 2–4
+  concrete options each, your recommendation first. The card renders in the user's
+  workbench and blocks the turn until answered, so batch related questions into one
+  call and never ask what you can safely decide yourself. Distill answers into
+  DECISIONS.md and/or tasks.
+- **Tasks**: keep your task list current; the user sees it live in a panel. The task
+  tools work, and editing .clyde/tasks.json directly is equivalent — the server
+  watches the file.
 - **QA panels**: when you produce visual QA artifacts (screenshots, plots, reports,
   metrics), publish them to the UI with the push_panel tool so the user can judge
   them without digging through files.
@@ -51,6 +66,12 @@ project state lives in on-screen panels. Follow these standing orders:
   a sidebar comment only in main-flow prose — the user is looking at the thread
   card, and prose elsewhere reads as silence.
 `;
+
+/** Silent plumbing prepended to a brand-new session's first message. */
+const NEW_SESSION_PRIME =
+  '[New session] Orient before working: read SCOPE.md (the goal document) and the .clyde/ state ' +
+  '(tasks.json, DECISIONS.md, reviews/) so standing work and rulings carry forward. Then handle ' +
+  'the message below.';
 
 /** Per-thread reply token; the id tells the server which thread to route to. */
 const sidebarToken = (threadId: string) => `[[sidebar:${threadId.slice(0, 8)}]]`;
@@ -84,6 +105,11 @@ export class AgentSession {
   private git: GitWatcher;
   /** TaskCreate tool_use ids awaiting their result, mapped to provisional task ids. */
   private pendingTaskCreates = new Map<string, string>();
+  /** Blocking AskUserQuestion calls awaiting a user answer, keyed by question id. */
+  private pendingQuestions = new Map<string, { questions: Question[]; resolve: (r: unknown) => void }>();
+  private tasksWatcher: fs.FSWatcher | null = null;
+  private tasksWatchTimer: ReturnType<typeof setTimeout> | undefined;
+  private needsPrime = false;
   private pendingCompact = false;
   private costBaseline = 0;
   private abort = new AbortController();
@@ -105,10 +131,19 @@ export class AgentSession {
     });
   }
 
+  /** Mid-turn includes blocking on a question — both hold the turn open. */
+  private get busy(): boolean {
+    return this.status === 'working' || this.status === 'awaiting_input';
+  }
+
   start(resumeSdkSessionId?: string) {
     void this.git.start();
+    this.watchTasksFile();
+    const bootEvents = this.store.loadEvents();
+    // A brand-new session gets a one-line orientation prime with its first message.
+    this.needsPrime = !resumeSdkSessionId && bootEvents.length === 0;
     // SDK total_cost_usd resets every process; seed from the log so $ stays session-cumulative.
-    for (const e of [...this.store.loadEvents()].reverse()) {
+    for (const e of [...bootEvents].reverse()) {
       if (e.type === 'usage' && typeof e.costUsd === 'number') { this.costBaseline = e.costUsd; break; }
     }
     const clydeTools = createSdkMcpServer({
@@ -176,6 +211,10 @@ export class AgentSession {
         // ride in on the user's login and nag the agent about OAuth.
         strictMcpConfig: true,
         mcpServers: { clyde: clydeTools },
+        // AskUserQuestion always falls through to canUseTool, even under
+        // bypassPermissions — that fallthrough is the question-card pipeline.
+        canUseTool: (toolName: string, input: any) => this.onCanUseTool(toolName, input),
+        toolConfig: { askUserQuestion: { previewFormat: 'html' } },
         env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
       } as any,
     });
@@ -189,7 +228,7 @@ export class AgentSession {
    *  restart continues automatically — visibly, at most once per boot, only when
    *  nothing else is queued, and never chained off a previous auto-resume. */
   private maybeAutoResume() {
-    if (this.status === 'working' || this.userQueue.length) return;
+    if (this.busy || this.userQueue.length) return;
     const events = this.store.loadEvents();
     const last = events[events.length - 1];
     if (!last) return;
@@ -245,14 +284,14 @@ export class AgentSession {
     };
     if (item.urgent) {
       // Urgent deliberately jumps the queue: stop in-flight work, deliver immediately.
-      if (this.status === 'working') {
+      if (this.busy) {
         slog('session', 'info', 'urgent: interrupting in-flight turn');
         void this.q?.interrupt().catch((err) => slog('session', 'warn', 'interrupt failed', { err: String(err) }));
       }
       this.deliver(item);
       return;
     }
-    if (this.status === 'working') {
+    if (this.busy) {
       if (process.env.CLYDE_STEERING !== '0') {
         // FIFO: flush anything already queued before steering the newest in.
         while (this.userQueue.length) this.deliverMidTurn(this.userQueue.shift()!);
@@ -283,7 +322,7 @@ export class AgentSession {
 
   /** Deliver the queue head if we're not mid-turn — keeps ordering strictly FIFO. */
   private drainNext() {
-    if (this.status === 'working') return;
+    if (this.busy) return;
     const next = this.userQueue.shift();
     if (!next) return;
     this.saveQueue();
@@ -310,6 +349,8 @@ export class AgentSession {
     this.disposed = true;
     slog('session', 'info', 'session disposed', { sessionId: this.store.sessionId });
     this.git.stop();
+    this.tasksWatcher?.close();
+    this.pendingQuestions.clear();
     this.abort.abort();
   }
 
@@ -318,7 +359,7 @@ export class AgentSession {
    *  divider is the visible confirmation. */
   requestCompact() {
     if (this.status === 'compacting' || this.pendingCompact) return; // one at a time
-    if (this.status === 'working') {
+    if (this.busy) {
       slog('session', 'info', 'compact requested — deferred to turn boundary');
       this.pendingCompact = true;
       return;
@@ -350,7 +391,14 @@ export class AgentSession {
     this.threadReplyPending = Boolean(item.threadId);
     this.setStatus('working');
     this.emit({ type: 'user_message', text: item.text, threadId: item.threadId, attachments: item.attachments });
-    const content = withAttachments(item.threadId ? this.composeThreadMessage(item) : item.text, item.attachments);
+    let text = item.threadId ? this.composeThreadMessage(item) : item.text;
+    if (this.needsPrime) {
+      // Orientation prime rides with the first message only — silent plumbing,
+      // like auto-resume: logged input, not conversation prose.
+      this.needsPrime = false;
+      text = `${NEW_SESSION_PRIME}\n\n${text}`;
+    }
+    const content = withAttachments(text, item.attachments);
     this.pushInput({
       type: 'user',
       message: { role: 'user', content },
@@ -373,6 +421,58 @@ export class AgentSession {
       `watching the thread card. If your reply changes a prior decision or plan, say so explicitly ` +
       `and record it in .clyde/DECISIONS.md. Afterwards, continue any in-progress main-line work.`
     );
+  }
+
+  // ---------- questions (AskUserQuestion via canUseTool) ----------
+
+  /** Permission fallthrough. AskUserQuestion ALWAYS lands here (even under
+   *  bypassPermissions): surface it as a question card in the workbench and hold
+   *  the turn open until the user answers — blocking is the point. Anything else
+   *  reaching this callback was refused auto-approval by the mode itself (e.g.
+   *  critical-path deletions), so deny it explicitly rather than widen bypass. */
+  private async onCanUseTool(toolName: string, input: any): Promise<unknown> {
+    if (toolName !== 'AskUserQuestion') {
+      slog('session', 'warn', 'canUseTool: denied non-question fallthrough', { toolName });
+      return {
+        behavior: 'deny',
+        message:
+          `${toolName} was not auto-approved by bypassPermissions (usually a critical-path ` +
+          `deletion or an org ask rule). Clyde declines these calls; adjust and continue.`,
+      };
+    }
+    const questionId = crypto.randomUUID();
+    const questions: Question[] = Array.isArray(input?.questions) ? input.questions : [];
+    slog('session', 'info', 'question posted — turn blocked on the user', {
+      questionId: questionId.slice(0, 8),
+      count: questions.length,
+    });
+    this.emit({
+      type: 'question',
+      questionId,
+      questions,
+      turnId: this.currentDelivery?.turnId ?? 'unattributed',
+    });
+    this.setStatus('awaiting_input');
+    return new Promise((resolve) => {
+      this.pendingQuestions.set(questionId, { questions, resolve });
+    });
+  }
+
+  /** The user answered a question card (WS answer_question). */
+  answerQuestion(questionId: string, answers: QuestionAnswers, response?: string) {
+    const pending = this.pendingQuestions.get(questionId);
+    if (!pending) {
+      slog('session', 'warn', 'answer for unknown or expired question — ignored', { questionId });
+      return;
+    }
+    this.pendingQuestions.delete(questionId);
+    slog('session', 'info', 'question answered', { questionId: questionId.slice(0, 8) });
+    this.emit({ type: 'question_answered', questionId, answers, ...(response ? { response } : {}) });
+    this.setStatus('working');
+    pending.resolve({
+      behavior: 'allow',
+      updatedInput: { questions: pending.questions, answers, ...(response ? { response } : {}) },
+    });
   }
 
   // ---------- SDK stream consumption ----------
@@ -485,6 +585,14 @@ export class AgentSession {
         break;
       }
       case 'result': {
+        // A turn that ends with a question still open (interrupt, error) leaves a
+        // dangling resolver — drop it so a late answer can't flip status.
+        if (this.pendingQuestions.size) {
+          slog('session', 'warn', 'turn ended with unanswered question(s) — expiring', {
+            count: this.pendingQuestions.size,
+          });
+          this.pendingQuestions.clear();
+        }
         slog('session', 'info', 'turn complete', {
           turnId: turnId.slice(0, 8),
           subtype: msg.subtype,
@@ -560,6 +668,29 @@ export class AgentSession {
         activeForm: t.activeForm,
       }));
       this.tasksChanged();
+    }
+  }
+
+  /** External edits to .clyde/tasks.json go live without a restart — the agent
+   *  (or the user) can edit the file directly and the panel follows. Watches the
+   *  directory (file watches drop on atomic replaces); self-writes no-op via
+   *  deep-equal. */
+  private watchTasksFile() {
+    try {
+      this.tasksWatcher = fs.watch(this.store.clydeDir, (_event, filename) => {
+        if (filename !== 'tasks.json') return;
+        clearTimeout(this.tasksWatchTimer);
+        this.tasksWatchTimer = setTimeout(() => {
+          if (this.disposed) return;
+          const fresh = this.store.loadTasks();
+          if (JSON.stringify(fresh) === JSON.stringify(this.tasks)) return;
+          slog('session', 'info', 'tasks.json changed on disk — reloading', { count: fresh.length });
+          this.tasks = fresh;
+          this.emit({ type: 'tasks_updated', tasks: this.tasks });
+        }, 150);
+      });
+    } catch (err) {
+      slog('session', 'warn', 'tasks.json watch unavailable', { err: String(err) });
     }
   }
 

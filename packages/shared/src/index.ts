@@ -1,7 +1,7 @@
 // Clyde wire protocol + domain types — the contract between server and web UI.
 // Everything persisted to .clyde/ or sent over the WebSocket is defined here.
 
-export type AgentStatus = 'idle' | 'working' | 'compacting' | 'disconnected';
+export type AgentStatus = 'idle' | 'working' | 'awaiting_input' | 'compacting' | 'disconnected';
 
 // ---------- Threads (span comments) ----------
 
@@ -31,6 +31,30 @@ export interface TaskItem {
   /** Present-continuous label shown while in_progress ("Building the QA harness"). */
   activeForm?: string;
 }
+
+// ---------- Questions (AskUserQuestion interception) ----------
+
+/** One option of a structured question. `preview` is an optional HTML fragment
+ *  (toolConfig previewFormat "html"); the SDK strips script/style before it
+ *  reaches Clyde. */
+export interface QuestionOption {
+  label: string;
+  description?: string;
+  preview?: string;
+}
+
+export interface Question {
+  /** Full question text — also the key answers are returned under. */
+  question: string;
+  /** Short label (≤12 chars). */
+  header?: string;
+  /** 2–4 choices; the UI adds its own "Other" free-text entry. */
+  options: QuestionOption[];
+  multiSelect?: boolean;
+}
+
+/** Keyed by exact question text; arrays for multiSelect; free text allowed. */
+export type QuestionAnswers = Record<string, string | string[]>;
 
 // ---------- Panels (agent-pushed UI) ----------
 
@@ -81,6 +105,8 @@ export type SessionEventBody =
       description?: string;
       prompt: string;
     }
+  | { type: 'question'; questionId: string; questions: Question[]; turnId: string }
+  | { type: 'question_answered'; questionId: string; answers: QuestionAnswers; response?: string }
   | { type: 'tasks_updated'; tasks: TaskItem[] }
   | { type: 'commit'; commit: CommitInfo }
   | { type: 'compaction'; preTokens?: number; trigger?: string }
@@ -113,6 +139,7 @@ export type ClientMessage =
   | { type: 'create_thread'; anchor: ThreadAnchor; text: string; urgent?: boolean }
   | { type: 'thread_reply'; threadId: string; text: string; urgent?: boolean }
   | { type: 'resolve_thread'; threadId: string }
+  | { type: 'answer_question'; questionId: string; answers: QuestionAnswers; response?: string }
   | { type: 'withdraw_queued'; queuedId: string }
   | { type: 'interrupt' }
   | { type: 'compact' }

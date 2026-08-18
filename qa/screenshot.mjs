@@ -143,6 +143,23 @@ try {
   await page.locator('.wb-expand').click();
   await rail('Tasks');
 
+  // 12c — the question experience: fixture pushes a live AskUserQuestion; the
+  // workbench auto-flips to the Questions tab with the amber attention treatment
+  await page.evaluate(() => fetch('/fixture/ask'));
+  await page.waitForSelector('.question-card');
+  await page.waitForTimeout(500); // gauge/preview settle
+  await shot('12c-question-card');
+
+  // 12d — answer it: one option per question (incl. a multi-select), submit,
+  // card collapses into the answered history
+  await page.locator('.q-block').nth(0).locator('.q-option', { hasText: 'Comfortable' }).click();
+  await page.locator('.q-block').nth(1).locator('.q-option', { hasText: 'All of them' }).click();
+  await page.locator('.q-block').nth(1).locator('.q-option', { hasText: 'Decision-producing' }).click();
+  await page.locator('.q-actions button.primary').click();
+  await page.waitForSelector('.q-history');
+  await page.waitForTimeout(300);
+  await shot('12d-question-answered');
+
   // 13 — dogfood: the real dev app, if it is running (non-fatal if not)
   try {
     await page.goto('http://localhost:5173/', { timeout: 3000 });

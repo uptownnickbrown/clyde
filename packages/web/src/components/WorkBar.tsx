@@ -37,6 +37,14 @@ export function WorkBar({
       </div>
     );
   }
+  if (status === 'awaiting_input') {
+    return (
+      <div className="workbar awaiting">
+        <span className="workbar-dot" />
+        waiting on you — Clyde asked a question in the workbench
+      </div>
+    );
+  }
   if (status === 'compacting') {
     return (
       <div className="workbar compacting">

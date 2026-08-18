@@ -84,6 +84,20 @@ export function buildSnapshot(projectRoot) {
     { id: 'tr5', ts: T(12), type: 'tool_result', toolUseId: 'tu6', ok: true, preview: 'captured 8 screenshots → qa/screenshots/' },
     { id: 'tc6', ts: T(12), type: 'tool_call', toolUseId: 'tu7', tool: 'Read', input: { file_path: `${projectRoot}/qa/screenshots/01-overview.png` }, turnId: 't3' },
     { id: 'tr6', ts: T(12), type: 'tool_result', toolUseId: 'tu7', ok: true },
+    // Answered question — renders in the workbench Questions history
+    {
+      id: 'q1e', ts: T(11), type: 'question', questionId: 'qfix1', turnId: 't3',
+      questions: [{
+        question: 'Which QA bar should the screenshot gallery target?',
+        header: 'QA bar',
+        options: [
+          { label: 'Pixel-perfect', description: 'Match the reference designs exactly before shipping' },
+          { label: 'Structurally faithful', description: 'Layout and hierarchy match; polish iterates in later waves' },
+        ],
+        multiSelect: false,
+      }],
+    },
+    { id: 'q1a', ts: T(11), type: 'question_answered', questionId: 'qfix1', answers: { 'Which QA bar should the screenshot gallery target?': 'Structurally faithful' } },
     { id: 'e-use1', ts: T(12), type: 'usage', contextTokens: 214000 },
     { id: 'e-cmp', ts: T(13), type: 'compaction', preTokens: 214000, trigger: 'auto' },
     { id: 'e-use2', ts: T(13), type: 'usage', contextTokens: 96000, costUsd: 4.18 },

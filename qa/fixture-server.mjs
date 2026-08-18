@@ -61,6 +61,50 @@ export function startFixtureServer(port = 4123) {
       return;
     }
 
+    // QA trigger: push a live AskUserQuestion to connected clients (screenshot.mjs
+    // calls this so earlier captures aren't disturbed by the auto-flipping card).
+    if (url.pathname === '/fixture/ask') {
+      const question = {
+        id: 'q-live', ts: new Date().toISOString(), type: 'question', questionId: 'qlive1', turnId: 't5',
+        questions: [
+          {
+            question: 'Two option-card densities survived review — which reads better in the workbench?',
+            header: 'Density',
+            options: [
+              {
+                label: 'Cozy',
+                description: 'Tight 8px rhythm — more options above the fold',
+                preview: '<div style="padding:7px 10px;border:1px solid #3a4150;border-radius:8px;font-size:12px">Cozy option row</div>',
+              },
+              {
+                label: 'Comfortable',
+                description: '14px rhythm — easier scanning under load',
+                preview: '<div style="padding:14px 12px;border:1px solid #3a4150;border-radius:8px;font-size:12px">Comfortable option row</div>',
+              },
+            ],
+            multiSelect: false,
+          },
+          {
+            question: 'Which answered questions should persist in the history stack?',
+            header: 'History',
+            options: [
+              { label: 'All of them', description: 'Every card, newest first' },
+              { label: 'Decision-producing only', description: 'Only the ones distilled into DECISIONS.md' },
+              { label: 'None', description: 'The event log is record enough' },
+            ],
+            multiSelect: true,
+          },
+        ],
+      };
+      const status = { id: 'q-live-status', ts: new Date().toISOString(), type: 'status', status: 'awaiting_input' };
+      for (const ws of sockets) {
+        ws.send(JSON.stringify({ type: 'event', event: question }));
+        ws.send(JSON.stringify({ type: 'event', event: status }));
+      }
+      res.writeHead(200).end('ok');
+      return;
+    }
+
     if (url.pathname === '/api/logs') {
       res.writeHead(200, { 'content-type': 'text/plain' });
       res.end(FIXTURE_LOGS);
@@ -91,7 +135,28 @@ export function startFixtureServer(port = 4123) {
   });
 
   const wss = new WebSocketServer({ server, path: '/ws' });
+  const sockets = new Set();
   wss.on('connection', (ws) => {
+    sockets.add(ws);
+    // Echo answer_question like the real server: answered event + back to working.
+    ws.on('message', (data) => {
+      let msg;
+      try {
+        msg = JSON.parse(String(data));
+      } catch {
+        return;
+      }
+      if (msg.type !== 'answer_question') return;
+      const answered = {
+        id: 'q-live-a', ts: new Date().toISOString(), type: 'question_answered',
+        questionId: msg.questionId, answers: msg.answers, ...(msg.response ? { response: msg.response } : {}),
+      };
+      const status = { id: 'q-live-w', ts: new Date().toISOString(), type: 'status', status: 'working' };
+      for (const s of sockets) {
+        s.send(JSON.stringify({ type: 'event', event: answered }));
+        s.send(JSON.stringify({ type: 'event', event: status }));
+      }
+    });
     ws.send(JSON.stringify({ type: 'hello', snapshot }));
     // Fresh working-status event so the work-bar timer starts near zero at capture time.
     ws.send(
@@ -107,7 +172,10 @@ export function startFixtureServer(port = 4123) {
       if (i >= words.length) return clearInterval(timer);
       ws.send(JSON.stringify({ type: 'delta', turnId: 't5', text: (i ? ' ' : '') + words[i++] }));
     }, 30);
-    ws.on('close', () => clearInterval(timer));
+    ws.on('close', () => {
+      sockets.delete(ws);
+      clearInterval(timer);
+    });
   });
 
   return new Promise((resolve) => {

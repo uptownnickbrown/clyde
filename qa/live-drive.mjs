@@ -88,6 +88,27 @@ try {
   await shot('live-06-fresh-turn');
   log('fresh session round-trip OK');
 
+  // --- 5: AskUserQuestion round-trip — the blocking canUseTool path, live ---
+  await page.waitForSelector('.workbar.idle', { timeout: 240000 });
+  await page.locator('.composer textarea').fill(
+    'Call the AskUserQuestion tool now with exactly one question: "Which mascot should the test suite adopt?" with options "Heron" and "Otter". After you receive my answer, reply with just the chosen mascot name.',
+  );
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.question-card', { timeout: 240000 });
+  log('question card rendered (canUseTool interception OK)');
+  await page.waitForTimeout(300);
+  await shot('live-07-question-card');
+  await page.locator('.question-card .q-option', { hasText: 'Otter' }).click();
+  await page.locator('.q-actions button.primary').click();
+  log('answer submitted');
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('.msg-assistant')].some((m) => /otter/i.test(m.textContent ?? '')),
+    { timeout: 240000 },
+  );
+  await page.waitForTimeout(300);
+  await shot('live-08-question-answered');
+  log('question round-trip OK — answer reached the model');
+
   console.log('\nLIVE QA: all flows passed');
 } finally {
   await browser.close();

@@ -79,6 +79,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 .status-idle { color: var(--ok); }
 .status-compacting { color: var(--warn); }
 .status-compacting .status-dot { animation: pulse 1.2s ease-in-out infinite; }
+.status-awaiting_input { color: var(--warn); }
+.status-awaiting_input .status-dot { animation: pulse 1.2s ease-in-out infinite; }
 .status-disconnected { color: var(--danger); }
 
 .topbar-btn {
@@ -288,6 +290,67 @@ button.linklike:disabled { opacity: 0.55; cursor: default; }
 .file-count { color: var(--text-faint); }
 .files-touched button { background: none; border: none; color: var(--accent); font-size: 11px; padding: 0; }
 
+/* ---------- questions (the attention surface's first tenant; amber = needs you) ---------- */
+.questions-panel { padding: 12px 14px; font-size: 13px; }
+.question-card {
+  border: 1px solid rgba(226, 185, 61, 0.35); border-left: 3px solid var(--warn);
+  background: var(--bg-raised); border-radius: 0 10px 10px 0; padding: 12px 14px;
+}
+.q-kicker {
+  display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 650;
+  text-transform: uppercase; letter-spacing: 0.07em; color: var(--warn); margin-bottom: 10px;
+}
+.q-kicker-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+.q-block { margin: 12px 0; }
+.q-block:first-of-type { margin-top: 0; }
+.q-header {
+  font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em;
+  background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 1.5px 8px;
+  margin-right: 8px; vertical-align: 1.5px; white-space: nowrap;
+}
+.q-text { font-size: 13px; line-height: 1.5; color: var(--text); margin-bottom: 8px; }
+.q-options { display: flex; flex-direction: column; gap: 6px; }
+.q-option {
+  display: flex; gap: 9px; align-items: flex-start; text-align: left; width: 100%;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 11px; font-size: 12.5px;
+}
+.q-option:hover { background: var(--bg-hover); }
+.q-option.selected { border-color: var(--warn); background: var(--warn-soft); }
+.q-check { flex-shrink: 0; color: var(--text-faint); font-size: 12px; line-height: 1.5; }
+.q-option.selected .q-check { color: var(--warn); }
+.q-option-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.q-option-label { font-weight: 600; color: var(--text); }
+.q-option-desc { color: var(--text-dim); font-size: 12px; line-height: 1.45; }
+.q-preview {
+  display: block; margin-top: 6px; background: var(--bg); border: 1px solid var(--border-soft);
+  border-radius: 6px; padding: 8px; overflow: hidden;
+}
+.q-other {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); padding: 7px 11px; font: inherit; font-size: 12.5px;
+}
+.q-other:focus { outline: none; border-color: var(--warn); }
+.q-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.q-actions button.primary {
+  background: var(--warn); color: #17130a; border: none; border-radius: var(--radius);
+  padding: 6px 16px; font-size: 13px; font-weight: 650;
+}
+.q-note { font-size: 11.5px; color: var(--text-faint); }
+.q-history {
+  border-left: 3px solid var(--border); background: var(--bg-raised); border-radius: 0 8px 8px 0;
+  padding: 8px 12px; margin: 8px 0; font-size: 12px;
+}
+.q-history.expired { opacity: 0.6; }
+.q-history-row { margin: 4px 0; }
+.q-history-q { display: block; color: var(--text-dim); line-height: 1.45; }
+.q-history-a { display: block; color: var(--ok); margin-top: 1px; }
+.q-history.expired .q-history-a { color: var(--text-faint); font-style: italic; }
+.wb-attn {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn);
+  margin-left: 6px; vertical-align: 1px; animation: pulse 1.2s ease-in-out infinite;
+}
+
 /* ---------- conversation ---------- */
 .conversation { flex: 1; overflow-y: auto; padding: 24px 36px; scroll-behavior: smooth; background: var(--bg); }
 .conversation-doc { max-width: 880px; margin: 0 auto; }
@@ -397,6 +460,8 @@ button.thread-resolved { background: none; border: none; padding: 0; cursor: poi
 .workbar.disconnected .workbar-dot { background: var(--danger); }
 .workbar.compacting { color: var(--warn); }
 .workbar.compacting .workbar-dot { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+.workbar.awaiting { color: var(--warn); }
+.workbar.awaiting .workbar-dot { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.25; } }
 
 /* ---------- composer ---------- */

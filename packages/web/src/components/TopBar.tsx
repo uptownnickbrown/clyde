@@ -71,7 +71,7 @@ export function TopBar({
         )}
         <span className={`status status-${shownStatus}`}>
           <span className="status-dot" />
-          {shownStatus}
+          {shownStatus.replace('_', ' ')}
         </span>
         {working && (
           <button className="topbar-btn danger" title="Interrupt the in-flight turn" onClick={() => send({ type: 'interrupt' })}>

@@ -2,7 +2,7 @@
   {
     "id": "qa-screenshots",
     "kind": "image-gallery",
-    "title": "QA screenshots — 15 UI states (fixture-driven)",
+    "title": "QA screenshots — question experience wave",
     "glob": "qa/screenshots/*.png"
   }
 ]
