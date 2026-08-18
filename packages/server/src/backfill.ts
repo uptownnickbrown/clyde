@@ -17,6 +17,9 @@
 //     message.id and the final ones carry message.stop_reason 'end_turn'. There is
 //     NO 'result' entry in transcripts — stop_reason is the turn-completion signal.
 //   {type:'system', subtype:'compact_boundary', compactMetadata:{preTokens,trigger}}
+//   {type:'user', message:{content:'<task-notification>…'}} — harness-injected
+//     background-agent completion notice (string content, no isMeta); becomes a
+//     dispatch_update event, exactly as the live translation path does.
 //   metadata lines (queue-operation, attachment, ai-title, last-prompt, mode, …) are
 //   ignored, as are sidechain (subagent) and isMeta (harness-injected) entries.
 //
@@ -63,6 +66,67 @@ export function previewOf(content: unknown): string | undefined {
 
 export function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+// ---------- task-notification parsing (background-agent completions) ----------
+//
+// When a background agent (Task/Agent with run_in_background) finishes, the harness
+// injects a user message whose text carries a <task-notification> block. Real shape,
+// verified against ~/.claude/projects/<munged-cwd>/*.jsonl:
+//   <task-notification>
+//   <task-id>ade4f42…</task-id>
+//   <tool-use-id>toolu_01WCmTu…</tool-use-id>        ← matches the dispatch
+//   <output-file>/tmp/…/tasks/….output</output-file>
+//   <status>completed|failed</status>
+//   <summary>Agent "…" finished</summary>
+//   <note>…may notify more than once…</note>          ← optional
+//   <result>…full agent report…</result>              ← optional (absent on failures)
+//   <worktree><worktreePath>…</worktreePath><worktreeBranch>…</worktreeBranch></worktree>
+//   </task-notification>
+// The harness HTML-escapes instruction-shaped content inside <result> (&lt; &amp; …);
+// we decode after extraction for display. Failed notifications also fire for
+// background Bash tasks — consumers join on dispatch toolUseIds.
+
+/** Max chars of a notification <result> report carried on a dispatch_update. */
+const DISPATCH_RESULT_MAX = 4000;
+
+const decodeEntities = (s: string) =>
+  s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+
+export type DispatchUpdateBody = Extract<SessionEventBody, { type: 'dispatch_update' }>;
+
+/** Parse every <task-notification> block in a user-message text into dispatch_update
+ *  bodies. Tolerant: missing close tag reads to end of text; blocks without a
+ *  tool-use-id (nothing to correlate) are dropped; unknown statuses read as
+ *  'completed' (the agent did stop). Shared by live translation and backfill. */
+export function parseTaskNotifications(text: string): DispatchUpdateBody[] {
+  if (!text.includes('<task-notification>')) return [];
+  const out: DispatchUpdateBody[] = [];
+  const blockRe = /<task-notification>([\s\S]*?)(?:<\/task-notification>|$)/g;
+  for (let m = blockRe.exec(text); m; m = blockRe.exec(text)) {
+    const inner = m[1];
+    const tag = (name: string): string | undefined => {
+      const t = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(inner);
+      const v = t?.[1].trim();
+      return v ? decodeEntities(v) : undefined;
+    };
+    const toolUseId = tag('tool-use-id');
+    if (!toolUseId) continue;
+    const summary = tag('summary');
+    const result = tag('result');
+    const worktreeBranch = tag('worktreeBranch');
+    const worktreePath = tag('worktreePath');
+    out.push({
+      type: 'dispatch_update',
+      toolUseId,
+      status: tag('status') === 'failed' ? 'failed' : 'completed',
+      ...(summary ? { summary } : {}),
+      ...(result ? { result: truncate(result, DISPATCH_RESULT_MAX) } : {}),
+      ...(worktreeBranch ? { worktreeBranch } : {}),
+      ...(worktreePath ? { worktreePath } : {}),
+    });
+  }
+  return out;
 }
 
 /** Where the Claude CLI keeps this project's transcript for a given sdk session.
@@ -120,6 +184,7 @@ export function planBackfill(opts: {
   const loggedUuids = new Set<string>();
   const loggedToolCalls = new Set<string>();
   const loggedToolResults = new Set<string>();
+  const loggedDispatchUpdates = new Set<string>();
   const loggedAssistantTexts = new Set<string>();
   const loggedUserTexts: string[] = [];
   let loggedCompactions = 0;
@@ -127,6 +192,7 @@ export function planBackfill(opts: {
     if (e.sdkUuid) loggedUuids.add(e.sdkUuid);
     if (e.type === 'tool_call') loggedToolCalls.add(e.toolUseId);
     else if (e.type === 'tool_result') loggedToolResults.add(e.toolUseId);
+    else if (e.type === 'dispatch_update') loggedDispatchUpdates.add(e.toolUseId);
     else if (e.type === 'assistant_message') loggedAssistantTexts.add(e.markdown.trim());
     else if (e.type === 'user_message') loggedUserTexts.push(e.text.trim());
     else if (e.type === 'compaction') loggedCompactions++;
@@ -180,6 +246,11 @@ export function planBackfill(opts: {
       }
       const text = userEntryText(o)?.trim();
       if (!text) return null;
+      // Task-notification entries ARE planned (as dispatch_updates), so they count
+      // toward correlation — before the plain-text check, whose containment match
+      // could false-positive on a short logged user text inside a long report.
+      const notifications = parseTaskNotifications(text);
+      if (notifications.length) return notifications.every((n) => loggedDispatchUpdates.has(n.toolUseId));
       // Delivered prompts are logged verbatim before they reach the CLI; sidebar
       // comments are logged raw but sent wrapped — containment covers both. Other
       // user-typed entries (skill loads, interrupt notices) match nothing → null,
@@ -269,18 +340,25 @@ export function planBackfill(opts: {
         if (contextTokens > 0) plan.planned.push({ body: { type: 'usage', contextTokens }, ts, sdkUuid: o.uuid });
       }
       if (TERMINAL_STOP.has(o.message.stop_reason)) pendingTurnEnd = { msgId: msgId ?? '', ts, sdkUuid: o.uuid };
-    } else if (o?.type === 'user' && !o.isSidechain && !o.isMeta && Array.isArray(o?.message?.content)) {
-      for (const b of o.message.content) {
-        if (b?.type === 'tool_result') {
-          plan.planned.push({
-            body: { type: 'tool_result', toolUseId: b.tool_use_id, ok: !b.is_error, preview: previewOf(b.content) },
-            ts,
-            sdkUuid: o.uuid,
-          });
+    } else if (o?.type === 'user' && !o.isSidechain && !o.isMeta) {
+      if (Array.isArray(o?.message?.content)) {
+        for (const b of o.message.content) {
+          if (b?.type === 'tool_result') {
+            plan.planned.push({
+              body: { type: 'tool_result', toolUseId: b.tool_use_id, ok: !b.is_error, preview: previewOf(b.content) },
+              ts,
+              sdkUuid: o.uuid,
+            });
+          }
         }
       }
       // User text is never backfilled: deliver() logs it before the CLI ever sees
-      // it, so unmatched user text here is harness-injected, not a loss.
+      // it, so unmatched user text here is harness-injected, not a loss — EXCEPT
+      // task-notifications (background-agent completions), which only ever arrive
+      // harness-injected and must become dispatch_updates exactly as live does.
+      for (const body of parseTaskNotifications(userEntryText(o) ?? '')) {
+        plan.planned.push({ body, ts, sdkUuid: o.uuid });
+      }
     } else if (o?.type === 'system' && o?.subtype === 'compact_boundary' && unloggedCompacts > 0) {
       plan.planned.push({
         body: { type: 'compaction', preTokens: o.compactMetadata?.preTokens, trigger: o.compactMetadata?.trigger },

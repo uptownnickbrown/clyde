@@ -17,6 +17,7 @@ import {
   PushedPanels,
   ReviewsPanel,
   TasksPanel,
+  deriveAgents,
 } from './components/Sidebars';
 
 // Shell layout (Design Vision): stable top bar · icon rail · one capability panel ·
@@ -80,14 +81,13 @@ export default function App() {
     store.set('clyde.leftOpen', '1');
   };
 
-  // Tasks currently delegated: dispatches naming a task whose result hasn't landed (R8).
+  // Tasks currently delegated: dispatches naming a task that are still running (R8),
+  // per the one rule in deriveAgents — a background spawn ack is not completion;
+  // dispatch_update (or a real synchronous tool_result) is.
   const { delegated, agentsRunning } = useMemo(() => {
-    const resultIds = new Set(
-      state.events.filter((e) => e.type === 'tool_result').map((e) => (e.type === 'tool_result' ? e.toolUseId : '')),
-    );
-    const open = state.events.filter((e) => e.type === 'dispatch' && !resultIds.has(e.toolUseId));
+    const open = deriveAgents(state.events).filter((a) => a.running);
     return {
-      delegated: new Set(open.map((e) => (e.type === 'dispatch' ? (e.description ?? '') : ''))),
+      delegated: new Set(open.map((a) => a.dispatch.description ?? '')),
       agentsRunning: open.length,
     };
   }, [state.events]);

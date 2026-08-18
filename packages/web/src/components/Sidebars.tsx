@@ -62,47 +62,129 @@ export function TasksPanel({ tasks, delegated }: { tasks: TaskItem[]; delegated?
   );
 }
 
-/** R8: subagents as first-class cards — status, duration, live tool count. */
-export function AgentsPanel({ events }: { events: SessionEvent[] }) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const dispatches = events.filter((e): e is Extract<SessionEvent, { type: 'dispatch' }> => e.type === 'dispatch');
-  const resultTs = new Map<string, string>();
-  const toolCounts = new Map<string, number>();
+// ---------- agents (R8: subagents as first-class cards) ----------
+
+type DispatchEvent = Extract<SessionEvent, { type: 'dispatch' }>;
+type DispatchUpdateEvent = Extract<SessionEvent, { type: 'dispatch_update' }>;
+
+export interface AgentView {
+  dispatch: DispatchEvent;
+  running: boolean;
+  failed: boolean;
+  /** Latest completion notification (background agents; carries summary/report/worktree). */
+  update?: DispatchUpdateEvent;
+  /** When finished: the notification ts, or the synchronous tool_result ts. */
+  finishedTs?: string;
+  /** Liveness heartbeat: newest parented tool_call ts, else the dispatch ts. */
+  lastActivityTs: string;
+  tools: number;
+}
+
+/** Background dispatches ack their tool_result instantly with this prefix — that is
+ *  a spawn ack, NOT completion. */
+const SPAWN_ACK = 'Async agent launched';
+
+/** The one running/finished rule, shared by the panel and the rail badge: a dispatch
+ *  is running while it has no dispatch_update AND its tool_result is missing or was
+ *  only the background spawn ack. It finishes per dispatch_update (background), or
+ *  per its real tool_result (legacy synchronous dispatches). */
+export function deriveAgents(events: SessionEvent[]): AgentView[] {
+  const dispatches: DispatchEvent[] = [];
+  const results = new Map<string, { ts: string; ok: boolean; ack: boolean }>();
+  const updates = new Map<string, DispatchUpdateEvent>();
+  const lastChild = new Map<string, string>();
+  const counts = new Map<string, number>();
   for (const e of events) {
-    if (e.type === 'tool_result') resultTs.set(e.toolUseId, e.ts);
-    if (e.type === 'tool_call' && e.parentToolUseId) {
-      toolCounts.set(e.parentToolUseId, (toolCounts.get(e.parentToolUseId) ?? 0) + 1);
+    if (e.type === 'dispatch') dispatches.push(e);
+    else if (e.type === 'tool_result' && !results.has(e.toolUseId))
+      results.set(e.toolUseId, { ts: e.ts, ok: e.ok, ack: e.preview?.startsWith(SPAWN_ACK) ?? false });
+    else if (e.type === 'dispatch_update') updates.set(e.toolUseId, e); // re-notify: latest wins
+    else if (e.type === 'tool_call' && e.parentToolUseId) {
+      counts.set(e.parentToolUseId, (counts.get(e.parentToolUseId) ?? 0) + 1);
+      lastChild.set(e.parentToolUseId, e.ts);
     }
   }
+  return dispatches.map((d) => {
+    const update = updates.get(d.toolUseId);
+    const res = results.get(d.toolUseId);
+    const syncResult = res && !res.ack ? res : undefined;
+    return {
+      dispatch: d,
+      running: !update && !syncResult,
+      failed: update ? update.status === 'failed' : syncResult ? !syncResult.ok : false,
+      update,
+      finishedTs: update?.ts ?? syncResult?.ts,
+      lastActivityTs: lastChild.get(d.toolUseId) ?? d.ts,
+      tools: counts.get(d.toolUseId) ?? 0,
+    };
+  });
+}
+
+const fmtDur = (secs: number) => (secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`);
+
+export function AgentsPanel({ events }: { events: SessionEvent[] }) {
+  const agents = deriveAgents(events);
+  const anyRunning = agents.some((a) => a.running);
+  // Running cards tick live (like the WorkBar) — duration and last-activity age.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!anyRunning) return;
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [anyRunning]);
   return (
     <div className="agents-panel">
-      {dispatches.length === 0 && <div className="empty">no subagents dispatched yet</div>}
-      {[...dispatches].reverse().map((d) => {
-        const doneTs = resultTs.get(d.toolUseId);
-        const secs = Math.max(
-          0,
-          Math.round(((doneTs ? new Date(doneTs).getTime() : Date.now()) - new Date(d.ts).getTime()) / 1000),
-        );
-        const dur = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
-        const tools = toolCounts.get(d.toolUseId) ?? 0;
-        return (
-          <section key={d.id} className={`panel agent-card ${doneTs ? 'done' : 'running'}`}>
-            <div className="agent-line">
-              <span className={`agent-status ${doneTs ? 'done' : 'running'}`}>{doneTs ? '●' : '◐'}</span>
-              <strong>{d.description ?? d.agentType ?? 'subagent'}</strong>
-              <span className="agent-meta">
-                {d.agentType ?? 'agent'} · {dur}
-                {tools > 0 && ` · ${tools} tool${tools === 1 ? '' : 's'}`}
-              </span>
-            </div>
-            <button className="linklike" onClick={() => setOpenId(openId === d.id ? null : d.id)}>
-              {openId === d.id ? 'hide prompt' : 'show prompt'}
-            </button>
-            {openId === d.id && <pre className="agent-prompt">{d.prompt.slice(0, 4000)}</pre>}
-          </section>
-        );
-      })}
+      {agents.length === 0 && <div className="empty">no subagents dispatched yet</div>}
+      {[...agents].reverse().map((a) => (
+        <AgentCard key={a.dispatch.id} agent={a} />
+      ))}
     </div>
+  );
+}
+
+function AgentCard({ agent }: { agent: AgentView }) {
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const d = agent.dispatch;
+  const endMs = agent.finishedTs ? new Date(agent.finishedTs).getTime() : Date.now();
+  const dur = fmtDur(Math.max(0, Math.round((endMs - new Date(d.ts).getTime()) / 1000)));
+  const state = agent.running ? 'running' : agent.failed ? 'failed' : 'done';
+  const idleSecs = Math.max(0, Math.round((Date.now() - new Date(agent.lastActivityTs).getTime()) / 1000));
+  const report = agent.update?.result;
+  return (
+    <section className={`panel agent-card ${state}`}>
+      <div className="agent-line">
+        <span className={`agent-status ${state}`}>{agent.running ? '◐' : agent.failed ? '✕' : '●'}</span>
+        <strong>{d.description ?? d.agentType ?? 'subagent'}</strong>
+        <span className="agent-meta">
+          {d.agentType ?? 'agent'} · {dur}
+          {agent.tools > 0 && ` · ${agent.tools} tool${agent.tools === 1 ? '' : 's'}`}
+        </span>
+        {agent.running && (
+          <span className={`agent-activity${idleSecs > 120 ? ' stalled' : ''}`}>
+            {idleSecs <= 5 ? 'active now' : `last activity ${fmtDur(idleSecs)} ago`}
+          </span>
+        )}
+        {agent.update?.worktreeBranch && (
+          <span className="agent-branch" title={agent.update.worktreePath}>
+            ⎇ {agent.update.worktreeBranch}
+          </span>
+        )}
+      </div>
+      {!agent.running && agent.update?.summary && <div className="agent-summary">{agent.update.summary}</div>}
+      <div className="agent-actions">
+        <button className="linklike" onClick={() => setShowPrompt(!showPrompt)}>
+          {showPrompt ? 'hide prompt' : 'show prompt'}
+        </button>
+        {report && (
+          <button className="linklike" onClick={() => setShowReport(!showReport)}>
+            {showReport ? 'hide report' : 'show report'}
+          </button>
+        )}
+      </div>
+      {showPrompt && <pre className="agent-prompt">{d.prompt.slice(0, 4000)}</pre>}
+      {showReport && report && <pre className="agent-prompt agent-report">{report}</pre>}
+    </section>
   );
 }
 

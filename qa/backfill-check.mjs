@@ -16,9 +16,9 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(HERE, '../packages/server/dist/backfill.js');
 
-let planBackfill, transcriptPathFor, parseSidebarMarker;
+let planBackfill, transcriptPathFor, parseSidebarMarker, parseTaskNotifications;
 try {
-  ({ planBackfill, transcriptPathFor, parseSidebarMarker } = await import(DIST));
+  ({ planBackfill, transcriptPathFor, parseSidebarMarker, parseTaskNotifications } = await import(DIST));
 } catch (err) {
   console.error(`Cannot import ${DIST} — build first: npm run typecheck (or npm run build)`);
   console.error(String(err));
@@ -216,6 +216,53 @@ console.log('10. sidechain/meta hygiene');
   ];
   const plan = planBackfill({ events: baseEvents, transcript: lines([...consumedEntries, ...noise]), threads: [] });
   check('no events from sidechain or user text entries', plan.planned.length === 0, plan.planned.map((p) => p.body));
+}
+
+// ---------- 11. background-agent task-notification -> dispatch_update ----------
+// Shape mirrors real injected notifications (string user content, escaped entities,
+// nested worktree tags) from ~/.claude/projects/-Users-nbrown-Desktop-clyde/*.jsonl.
+console.log('11. task-notification backfill');
+{
+  const NOTIF =
+    '<task-notification>\n<task-id>a9f2c3d4e</task-id>\n<tool-use-id>toolu_bg1</tool-use-id>\n' +
+    '<output-file>/tmp/tasks/a9f2c3d4e.output</output-file>\n<status>completed</status>\n' +
+    '<summary>Agent "Minimap markers" finished</summary>\n' +
+    '<note>A task-notification fires each time this agent stops.</note>\n' +
+    '<result>Done. Escaped tags survive: &lt;task-notification&gt; &amp; friends.</result>\n' +
+    '<worktree><worktreePath>/tmp/wt</worktreePath><worktreeBranch>worktree-agent-a9f2c3d4e</worktreeBranch></worktree>\n' +
+    '</task-notification>';
+  const tail = [
+    asst('u-bg-1', T('0:05'), { type: 'tool_use', id: 'toolu_bg1', name: 'Agent', input: { description: 'Minimap markers', run_in_background: true } }, 'end_turn', 'msg_bg'),
+    toolResult('u-bg-2', T('0:05'), 'toolu_bg1', 'Async agent launched successfully. (This tool result is internal metadata.)\nagentId: a9f2c3d4e'),
+    userPrompt('u-bg-3', T('0:06'), NOTIF),
+  ];
+  const plan = planBackfill({ events: baseEvents, transcript: lines([...consumedEntries, ...tail]), threads: [] });
+  const du = plan.planned.find((p) => p.body.type === 'dispatch_update');
+  check('dispatch_update planned from the notification', Boolean(du), plan.planned.map((p) => p.body.type));
+  check(
+    'notification fields parsed',
+    du && du.body.toolUseId === 'toolu_bg1' && du.body.status === 'completed' &&
+      du.body.summary === 'Agent "Minimap markers" finished' &&
+      du.body.worktreeBranch === 'worktree-agent-a9f2c3d4e' && du.body.worktreePath === '/tmp/wt',
+    du?.body,
+  );
+  check('entities decoded in the report', du && du.body.result.includes('<task-notification> & friends'), du?.body.result);
+  check('spawn ack backfilled as a plain tool_result', plan.planned.some((p) => p.body.type === 'tool_result' && p.body.toolUseId === 'toolu_bg1'));
+  check('sdkUuid stamped from the notification entry', du && du.sdkUuid === 'u-bg-3');
+
+  const withUpdate = [...baseEvents, ...plan.planned.map((p) => ev(p.body, p.ts, p.sdkUuid))];
+  const replan = planBackfill({ events: withUpdate, transcript: lines([...consumedEntries, ...tail]), threads: [] });
+  check('re-plan is empty (uuid correlation)', replan.planned.length === 0, replan.planned.map((p) => p.body.type));
+  const legacyLog = [...baseEvents, ...plan.planned.map((p) => ev(p.body, p.ts))]; // no sdkUuid anywhere
+  const replan2 = planBackfill({ events: legacyLog, transcript: lines([...consumedEntries, ...tail]), threads: [] });
+  check('re-plan is empty (content correlation, legacy log)', replan2.planned.length === 0, replan2.planned.map((p) => p.body.type));
+
+  check('parseTaskNotifications: plain text -> none', parseTaskNotifications('no notification here').length === 0);
+  const failed = parseTaskNotifications(
+    '<task-notification>\n<task-id>bzwpqdsy2</task-id>\n<tool-use-id>toolu_x</tool-use-id>\n<status>failed</status>\n<summary>Background command failed with exit code 144</summary>\n</task-notification>',
+  );
+  check('failed notification parsed without a result', failed.length === 1 && failed[0].status === 'failed' && failed[0].result === undefined, failed);
+  check('missing tool-use-id -> dropped', parseTaskNotifications('<task-notification>\n<status>completed</status>').length === 0);
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll backfill checks passed.');

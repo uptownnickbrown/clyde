@@ -73,8 +73,15 @@ export function buildSnapshot(projectRoot) {
     // Open sidebar thread anchored on a2
     { id: 'u-th1', ts: T(7), type: 'user_message', threadId: 'th1', text: 'Why append before broadcasting? If the write fails we drop the turn on the floor.' },
     { id: 'a-th1', ts: T(8), type: 'assistant_message', turnId: 't2', threadId: 'th1', markdown: 'Deliberate: the log is the source of truth — if it cannot be written, showing the message anyway would make the UI and the file disagree. I would rather surface the write error loudly. Happy to add retry-with-backoff as belt and suspenders.' },
+    // Background dispatch: instant spawn-ack tool_result, parented heartbeat calls,
+    // then a dispatch_update completion with worktree branch + final report.
+    { id: 'd3', ts: T(8), type: 'dispatch', toolUseId: 'tu9', agentType: 'general-purpose', description: 'Minimap: commit + thread markers', prompt: 'In an isolated worktree, add commit and thread markers to the conversation minimap: a tick per commit at its anchored message, a dot per open thread. Typecheck must pass; commit on your branch and report branch + sha.' },
+    { id: 'tr-d3', ts: T(8), type: 'tool_result', toolUseId: 'tu9', ok: true, preview: 'Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it, including the agentId below, into a user-facing reply.)\nagentId: a9f2c3d4e5b6a7c81 (internal ID - do not mention)' },
     { id: 'u2', ts: T(9), type: 'user_message', text: 'Looks right. Now set up the QA loop from the scope — Playwright screenshots, pushed to a gallery panel. Match the reference design attached.', attachments: ['qa/fixtures/attachment-sample.png'] },
     { id: 'a3', ts: T(10), type: 'assistant_message', turnId: 't3', markdown: A3 },
+    { id: 'tc-b1', ts: T(10), type: 'tool_call', toolUseId: 'tu9a', tool: 'Read', input: { file_path: `${projectRoot}/packages/web/src/components/Minimap.tsx` }, turnId: 't3', parentToolUseId: 'tu9' },
+    { id: 'tc-b2', ts: T(11), type: 'tool_call', toolUseId: 'tu9b', tool: 'Edit', input: { file_path: `${projectRoot}/packages/web/src/components/Minimap.tsx` }, turnId: 't3', parentToolUseId: 'tu9' },
+    { id: 'tc-b3', ts: T(12), type: 'tool_call', toolUseId: 'tu9c', tool: 'Bash', input: { command: 'npm run typecheck' }, turnId: 't3', parentToolUseId: 'tu9' },
     // Resolved thread anchored on a3
     { id: 'u-th2', ts: T(11), type: 'user_message', threadId: 'th2', text: 'This is the success criterion I care most about — make the gallery dense.' },
     { id: 'a-th2', ts: T(11), type: 'assistant_message', turnId: 't3b', threadId: 'th2', markdown: 'Noted — recorded in DECISIONS.md: the gallery is the primary QA surface, density over chrome.' },
@@ -103,6 +110,13 @@ export function buildSnapshot(projectRoot) {
     // Message-level thread (no span) anchored on the USER's own message u2
     { id: 'u-th3', ts: T(12), type: 'user_message', threadId: 'th3', text: 'Threading off my own message: the reference design I attached also has a dark-mode variant — is that in scope for the gallery?' },
     { id: 'a-th3', ts: T(13), type: 'assistant_message', turnId: 't3c', threadId: 'th3', markdown: 'Yes — the capture matrix runs every state in both variants, so the gallery will show dark mode side by side with light.' },
+    {
+      id: 'du1', ts: T(13), type: 'dispatch_update', toolUseId: 'tu9', status: 'completed',
+      summary: 'Agent "Minimap: commit + thread markers" finished',
+      result: 'Branch worktree-agent-a9f2c3d4e5b6a7c81, sha 4c21e9a.\n\nImplemented commit and thread markers on the conversation minimap:\n\n- One tick per commit, positioned at its anchored message (CommitInfo.messageId); commits without a message anchor group at the top.\n- One dot per open thread at the thread anchor; resolved threads are omitted.\n- Markers re-derive from the event log on every snapshot — no new state.\n\nVerified: npm run typecheck passes; visual check against the fixture at 1440x900 shows ticks aligned with the git panel ordering.\n\nRisks: marker density above ~40 commits may need clustering; left as a follow-up.',
+      worktreeBranch: 'worktree-agent-a9f2c3d4e5b6a7c81',
+      worktreePath: '/Users/nbrown/Desktop/clyde/.claude/worktrees/agent-a9f2c3d4e5b6a7c81',
+    },
     { id: 'e-cmp', ts: T(13), type: 'compaction', preTokens: 214000, trigger: 'auto' },
     { id: 'e-use2', ts: T(13), type: 'usage', contextTokens: 96000, costUsd: 4.18 },
     { id: 'a4', ts: T(14), type: 'assistant_message', turnId: 't4', markdown: A4 },

@@ -16,7 +16,14 @@ import type {
 import { ClydeStore } from './store.js';
 import { GitWatcher } from './git.js';
 import { slog } from './log.js';
-import { parseSidebarMarker, planBackfill, previewOf, transcriptPathFor, truncate } from './backfill.js';
+import {
+  parseSidebarMarker,
+  parseTaskNotifications,
+  planBackfill,
+  previewOf,
+  transcriptPathFor,
+  truncate,
+} from './backfill.js';
 
 /** Standing orders appended to the system prompt: the Clyde protocol. */
 const CLYDE_PROTOCOL = `
@@ -662,6 +669,28 @@ export class AgentSession {
               this.resolveTaskCreate(block.tool_use_id, previewOf(block.content));
             }
           }
+        }
+        // Background-agent completions: the harness injects a user message whose
+        // text carries a <task-notification> block (string content on the wire) —
+        // translate it into dispatch_update. These never leak into the document as
+        // user_message events: translate() only emits user_message from Clyde's own
+        // queue (deliver/deliverMidTurn), never from the SDK stream, so no
+        // suppression is needed.
+        const text =
+          typeof content === 'string'
+            ? content
+            : Array.isArray(content)
+              ? content
+                  .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
+                  .map((b: any) => b.text)
+                  .join('\n')
+              : '';
+        for (const body of parseTaskNotifications(text)) {
+          slog('session', 'info', 'task-notification → dispatch_update', {
+            toolUseId: body.toolUseId,
+            status: body.status,
+          });
+          this.emit(body, { sdkUuid: msg.uuid });
         }
         break;
       }
