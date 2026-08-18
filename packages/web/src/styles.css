@@ -222,14 +222,25 @@ button.linklike:disabled { opacity: 0.55; cursor: default; }
 .agent-card { padding: 10px 8px; border-bottom: 1px solid var(--border-soft); border-left: 2px solid transparent; }
 .agent-card.running { border-left-color: var(--accent); }
 .agent-card.done { border-left-color: var(--ok); }
+.agent-card.failed { border-left-color: var(--danger); }
 .agent-line { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
 .agent-status.running { color: var(--accent); }
 .agent-status.done { color: var(--ok); }
+.agent-status.failed { color: var(--danger); }
 .agent-meta { color: var(--text-dim); font-size: 11.5px; }
+.agent-activity { color: var(--text-dim); font-size: 11px; }
+.agent-activity.stalled { color: var(--warn); }
+.agent-branch {
+  font-family: var(--mono); font-size: 10.5px; color: var(--text-dim);
+  border: 1px solid var(--border-soft); border-radius: 8px; padding: 1px 7px; white-space: nowrap;
+}
+.agent-summary { margin: 5px 0 0 18px; font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+.agent-actions { display: flex; gap: 14px; margin-top: 3px; }
 .agent-prompt {
   background: var(--bg-raised); border-radius: 6px; padding: 8px; margin: 6px 0 0;
   font-family: var(--mono); font-size: 11px; white-space: pre-wrap; max-height: 300px; overflow-y: auto;
 }
+.agent-report { max-height: 380px; }
 
 /* ---------- activity + logs ---------- */
 .activity-panel, .logs-panel { padding: 8px 12px; font-size: 13px; }

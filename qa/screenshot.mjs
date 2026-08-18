@@ -131,6 +131,15 @@ try {
   await page.locator('.agents-panel .linklike').first().click(); // expand newest prompt
   await shot('10b-agents-panel');
 
+  // 10b2 — background-agent lifecycle: finished card with summary, worktree branch
+  // chip, and the final report expanded
+  await page.locator('.agents-panel .linklike').first().click(); // collapse the prompt again
+  await page
+    .locator('.agent-card', { hasText: 'Minimap' })
+    .locator('.linklike', { hasText: 'show report' })
+    .click();
+  await shot('10b2-agents-background');
+
   // 10c — decisions ledger (parsed from .clyde/DECISIONS.md)
   await rail('Decisions');
   await page.waitForSelector('.decision-card');

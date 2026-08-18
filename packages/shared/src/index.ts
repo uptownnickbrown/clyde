@@ -109,6 +109,22 @@ export type SessionEventBody =
       description?: string;
       prompt: string;
     }
+  /** A background agent finished. Background dispatches resolve their tool_result
+   *  within ~1s with a spawn ack ("Async agent launched…"); real completion arrives
+   *  later as a harness-injected <task-notification> user message, translated into
+   *  this event. toolUseId matches the dispatch (it can also name a background Bash
+   *  task — consumers join against dispatches). The same id can update more than
+   *  once (a notified agent can be resumed); the latest update wins. */
+  | {
+      type: 'dispatch_update';
+      toolUseId: string;
+      status: 'completed' | 'failed';
+      summary?: string;
+      /** The agent's final report (truncated server-side). */
+      result?: string;
+      worktreeBranch?: string;
+      worktreePath?: string;
+    }
   | { type: 'question'; questionId: string; questions: Question[]; turnId: string }
   | { type: 'question_answered'; questionId: string; answers: QuestionAnswers; response?: string }
   | { type: 'tasks_updated'; tasks: TaskItem[] }
