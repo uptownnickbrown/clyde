@@ -410,16 +410,41 @@ export class AgentSession {
     const thread = this.threads.find((t) => t.id === item.threadId);
     if (!thread) return item.text;
     if (item.text.startsWith('[Sidebar resolved]')) return item.text;
-    return (
-      `[Sidebar comment — threaded reply requested]\n` +
-      `The user selected this excerpt from one of your earlier messages:\n` +
-      `"""\n${thread.anchor.quote}\n"""\n` +
-      `Their comment:\n${item.text}\n\n` +
+    const instructions =
       `Reply NOW by calling the reply_in_thread tool with thread_id "${thread.id.slice(0, 8)}". ` +
       `Answer directly and self-containedly — a brief first reply beats a delayed thorough one, and ` +
       `you can call the tool again to add more. Do NOT answer only in main-flow prose; the user is ` +
       `watching the thread card. If your reply changes a prior decision or plan, say so explicitly ` +
-      `and record it in .clyde/DECISIONS.md. Afterwards, continue any in-progress main-line work.`
+      `and record it in .clyde/DECISIONS.md. Afterwards, continue any in-progress main-line work.`;
+    if (thread.anchor.quote) {
+      return (
+        `[Sidebar comment — threaded reply requested]\n` +
+        `The user selected this excerpt from one of your earlier messages:\n` +
+        `"""\n${thread.anchor.quote}\n"""\n` +
+        `Their comment:\n${item.text}\n\n` +
+        instructions
+      );
+    }
+    // Message-level thread: no highlighted span — the anchor is a whole message,
+    // which can be one of the user's own as easily as one of the assistant's.
+    const anchored = this.store.loadEvents().find((e) => e.id === thread.anchor.messageId);
+    const excerpt =
+      anchored?.type === 'assistant_message'
+        ? truncate(anchored.markdown, 200)
+        : anchored?.type === 'user_message'
+          ? truncate(anchored.text, 200)
+          : null;
+    const intro =
+      anchored?.type === 'user_message'
+        ? `The user started a thread on this earlier message of their own (no specific excerpt highlighted):`
+        : `The user started a thread on this earlier message of yours (no specific excerpt highlighted):`;
+    return (
+      `[Sidebar comment — threaded reply requested]\n` +
+      (excerpt !== null
+        ? `${intro}\n"""\n${excerpt}\n"""\n`
+        : `The user started a thread on an earlier message in the conversation.\n`) +
+      `Their comment:\n${item.text}\n\n` +
+      instructions
     );
   }
 

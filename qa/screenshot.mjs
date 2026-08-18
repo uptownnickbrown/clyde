@@ -86,6 +86,21 @@ try {
   await shot('05-comment-box');
   await page.locator('.comment-box .thread-actions button', { hasText: 'Cancel' }).click();
 
+  // 4b — message-level thread: hover affordance on a USER message → quoteless box,
+  // with the fixture's open message-level thread card visible beneath.
+  const userMsg = page.locator('#msg-u2');
+  await userMsg.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(600); // smooth scroll settles
+  await userMsg.hover(); // reveal the ghost ⊕ Thread affordance
+  await userMsg.locator('.thread-affordance').click();
+  await page.waitForSelector('.comment-box textarea');
+  await page
+    .locator('.comment-box textarea')
+    .fill('Threading on the whole message — no quote needed for this one.');
+  await page.waitForTimeout(700); // the box smooth-scrolls itself to center
+  await shot('04b-message-thread');
+  await page.locator('.comment-box .thread-actions button', { hasText: 'Cancel' }).click();
+
   // 6 — right workbench: pushed panels (gallery + metrics)
   await page.locator('.wb-tabs button', { hasText: 'Panels' }).click();
   await page.waitForTimeout(600); // gallery + metrics fetches

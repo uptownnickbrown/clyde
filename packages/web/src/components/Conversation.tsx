@@ -41,7 +41,8 @@ export function Conversation({
 }) {
   const working = status === 'working';
   const [pending, setPending] = useState<PendingComment | null>(null);
-  const [composing, setComposing] = useState<{ messageId: string; quote: string } | null>(null);
+  // quote === null → message-level thread (anchored to the whole message, no span).
+  const [composing, setComposing] = useState<{ messageId: string; quote: string | null } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true); // near the bottom → follow new content
   const hydratedRef = useRef(false);
@@ -93,6 +94,55 @@ export function Conversation({
     }
   };
 
+  // Shared per-message thread affordances — identical for user and assistant messages.
+
+  /** Ghost button in the message margin: start a thread on the whole message. */
+  const threadAffordance = (messageId: string) => (
+    <button
+      className="thread-affordance"
+      title="Start a thread on this message"
+      onClick={() => setComposing({ messageId, quote: null })}
+    >
+      ⊕ Thread
+    </button>
+  );
+
+  /** The thread-start box, if it is open on this message. `sourceText` locates
+   *  span offsets for quoted threads; message-level threads anchor bare. */
+  const threadStart = (messageId: string, sourceText: string) => {
+    if (composing?.messageId !== messageId) return null;
+    const quote = composing.quote;
+    return (
+      <ThreadStartBox
+        quote={quote}
+        working={working}
+        onSubmit={(text, urgent) => {
+          send({
+            type: 'create_thread',
+            anchor: quote
+              ? {
+                  messageId,
+                  start: Math.max(0, sourceText.indexOf(quote)),
+                  end: Math.max(0, sourceText.indexOf(quote)) + quote.length,
+                  quote,
+                }
+              : { messageId },
+            text,
+            urgent,
+          });
+          setComposing(null);
+        }}
+        onCancel={() => setComposing(null)}
+      />
+    );
+  };
+
+  /** Every thread anchored on this message, span and message-level alike. */
+  const threadCards = (messageId: string) =>
+    (threadsByMessage.get(messageId) ?? []).map((t) => (
+      <ThreadCard key={t.id} thread={t} messages={threadMessages.get(t.id) ?? []} working={working} send={send} />
+    ));
+
   return (
     <div
       className="conversation"
@@ -108,7 +158,8 @@ export function Conversation({
         switch (item.kind) {
           case 'user':
             return (
-              <div key={item.event.id} className="msg msg-user">
+              <div key={item.event.id} id={`msg-${item.event.id}`} className="msg msg-user">
+                {threadAffordance(item.event.id)}
                 {heads.get(item.event.id) && <SpeakerHead who="user" ts={item.event.ts} />}
                 <div className="user-body">
                   <Md>{item.event.text}</Md>
@@ -131,40 +182,20 @@ export function Conversation({
                     </div>
                   )}
                 </div>
+                {threadStart(item.event.id, item.event.text)}
+                {threadCards(item.event.id)}
               </div>
             );
           case 'assistant': {
-            const anchored = threadsByMessage.get(item.event.id) ?? [];
             return (
               <div key={item.event.id} id={`msg-${item.event.id}`} className="msg msg-assistant-wrap">
+                {threadAffordance(item.event.id)}
                 {heads.get(item.event.id) && <SpeakerHead who="clyde" ts={item.event.ts} />}
                 <div className="msg-assistant" onMouseUp={(e) => onMouseUp(e, item.event.id)}>
                   <Md>{item.event.markdown}</Md>
                 </div>
-                {composing?.messageId === item.event.id && (
-                  <ThreadStartBox
-                    quote={composing.quote}
-                    working={working}
-                    onSubmit={(text, urgent) => {
-                      send({
-                        type: 'create_thread',
-                        anchor: {
-                          messageId: item.event.id,
-                          start: Math.max(0, item.event.markdown.indexOf(composing.quote)),
-                          end: Math.max(0, item.event.markdown.indexOf(composing.quote)) + composing.quote.length,
-                          quote: composing.quote,
-                        },
-                        text,
-                        urgent,
-                      });
-                      setComposing(null);
-                    }}
-                    onCancel={() => setComposing(null)}
-                  />
-                )}
-                {anchored.map((t) => (
-                  <ThreadCard key={t.id} thread={t} messages={threadMessages.get(t.id) ?? []} working={working} send={send} />
-                ))}
+                {threadStart(item.event.id, item.event.markdown)}
+                {threadCards(item.event.id)}
               </div>
             );
           }
@@ -356,15 +387,20 @@ function ThreadCard({
     if (taRef.current) taRef.current.style.height = '';
   };
   if (thread.status === 'resolved' && !showResolved) {
+    // Message-level threads have no quote — the stub falls back to the opening message.
+    const first = messages[0];
+    const label =
+      thread.anchor.quote ??
+      (first?.type === 'user_message' ? first.text : first?.type === 'assistant_message' ? first.markdown : 'thread');
     return (
       <button className="thread-stub" onClick={() => setShowResolved(true)}>
-        ✓ “{thread.anchor.quote.slice(0, 90)}” · {messages.length} repl{messages.length === 1 ? 'y' : 'ies'} ▸
+        ✓ “{label.slice(0, 90)}” · {messages.length} repl{messages.length === 1 ? 'y' : 'ies'} ▸
       </button>
     );
   }
   return (
     <div className={`thread-card ${thread.status}`}>
-      <div className="thread-quote">“{thread.anchor.quote.slice(0, 200)}”</div>
+      {thread.anchor.quote && <div className="thread-quote">“{thread.anchor.quote.slice(0, 200)}”</div>}
       {messages.map((m) => (
         <div key={m.id} className={m.type === 'user_message' ? 'thread-user' : 'thread-assistant'}>
           <Md>{m.type === 'user_message' ? m.text : m.type === 'assistant_message' ? m.markdown : ''}</Md>
@@ -424,7 +460,8 @@ function ThreadStartBox({
   onSubmit,
   onCancel,
 }: {
-  quote: string;
+  /** null → message-level thread: anchored to the whole message, no quote line. */
+  quote: string | null;
   working: boolean;
   onSubmit: (text: string, urgent: boolean) => void;
   onCancel: () => void;
@@ -437,7 +474,7 @@ function ThreadStartBox({
   }, []);
   return (
     <div className="comment-box" ref={boxRef}>
-      <div className="thread-quote">“{quote.slice(0, 200)}”</div>
+      {quote && <div className="thread-quote">“{quote.slice(0, 200)}”</div>}
       <textarea
         autoFocus
         value={text}
