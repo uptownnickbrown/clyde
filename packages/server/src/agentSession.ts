@@ -319,18 +319,15 @@ export class AgentSession {
     this.setStatus('compacting');
   }
 
+  /** Silent by design: resolve is the user's presentation action (collapse), never
+   *  an agent turn — decisions get recorded when they settle mid-thread. */
   resolveThread(threadId: string) {
     const thread = this.threads.find((t) => t.id === threadId);
     if (!thread) return;
     thread.status = 'resolved';
     this.store.saveThreads(this.threads);
     this.bus.threads(this.threads);
-    this.enqueue(
-      `[Sidebar resolved] The user marked the sidebar thread on «${truncate(thread.anchor.quote, 120)}» as resolved. ` +
-        `If it settled or changed a decision, append it to .clyde/DECISIONS.md now; otherwise no action needed. ` +
-        `Reply briefly via the reply_in_thread tool (thread_id "${thread.id.slice(0, 8)}"), then continue your work.`,
-      { threadId },
-    );
+    slog('session', 'info', 'thread resolved', { threadId: threadId.slice(0, 8) });
   }
 
   private deliver(item: QueuedItem) {
