@@ -326,5 +326,34 @@ console.log('12. delta-journal recovery');
   check('marker-stripped probe matches the marker-stripped log -> no emit', plan.emit.length === 0, plan.emit);
 }
 
+// ---------- 13. tasks.json shape normalization (untrusted, LLM-edited) ----------
+// Regression: a ceremony run wrote {tasks:[…]} with title/description keys; the
+// unvalidated load made this.tasks a non-array and killed the SDK stream.
+{
+  const { normalizeTasks } = await import(path.join(HERE, '../packages/server/dist/store.js'));
+  const good = [{ id: '1', subject: 'A', status: 'pending' }];
+  check('bare array passes through', JSON.stringify(normalizeTasks(good)) === JSON.stringify(good));
+  const wrapped = normalizeTasks({
+    tasks: [
+      { id: 1, title: 'Add commits to haiku', description: 'poem update', status: 'pending', batch: 'b-1', source: { review: 'b-1.md', item: 1 } },
+      { id: 2, title: 'Nuke history', status: 'declined', declineReason: 'no' },
+    ],
+  });
+  check(
+    'wrapper object + title/description LLM-isms coerced',
+    wrapped.length === 2 &&
+      wrapped[0].id === '1' &&
+      wrapped[0].subject === 'Add commits to haiku' &&
+      wrapped[0].detail === 'poem update' &&
+      wrapped[0].batch === 'b-1' &&
+      wrapped[0].source.item === 1 &&
+      wrapped[1].status === 'declined',
+    wrapped,
+  );
+  check('unknown status defaults to pending', normalizeTasks([{ id: 9, subject: 'x', status: 'wip' }])[0].status === 'pending');
+  check('entries without id/subject dropped', normalizeTasks([{ subject: 'no id' }, { id: 3 }, null, 'junk']).length === 0);
+  check('non-array garbage -> empty list', normalizeTasks('nope').length === 0 && normalizeTasks({ a: 1 }).length === 0 && normalizeTasks(null).length === 0);
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll backfill checks passed.');
 process.exit(failures ? 1 : 0);

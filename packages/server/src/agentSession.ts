@@ -605,10 +605,13 @@ export class AgentSession {
       `3. Confirm scope with ONE AskUserQuestion call: a single multiSelect question listing every ` +
       `numbered item as an option ("Which items should I take on?"). Unselected items are declined — ` +
       `capture a short reason for each from the user's phrasing or a follow-up option, never invent one.\n` +
-      `4. File EVERY item by editing .clyde/tasks.json directly (the server watches it live): accepted ` +
-      `items become tasks with source: {review: "${batch}.md", item: <n>}, batch: "${batch}", status ` +
-      `"pending"; declined items get the same provenance with status "declined" and declineReason. ` +
-      `Nothing is silently dropped — the Reviews panel burn-down counts both.\n` +
+      `4. File EVERY item by editing .clyde/tasks.json directly (the server watches it live). The file ` +
+      `is a TOP-LEVEL JSON ARRAY of task objects — {id: string, subject: string, status, detail?, ` +
+      `source?, batch?, declineReason?} — keep the existing tasks and append yours with string ids and ` +
+      `these exact field names (subject/detail, never title/description; no wrapper object). Accepted ` +
+      `items get source: {review: "${batch}.md", item: <n>}, batch: "${batch}", status "pending"; ` +
+      `declined items get the same provenance with status "declined" and declineReason. Nothing is ` +
+      `silently dropped — the Reviews panel burn-down counts both.\n` +
       `5. Append an "## Intake result" section to .clyde/reviews/${batch}.md: each numbered item with ` +
       `→ task #<id>, or → declined: <reason>.\n` +
       `Then continue normal work, taking up accepted items by priority.`
@@ -674,7 +677,19 @@ export class AgentSession {
     try {
       for await (const raw of this.q) {
         if (this.disposed) break;
-        this.translate(raw as any);
+        try {
+          this.translate(raw as any);
+        } catch (err) {
+          // A translation bug must degrade to a logged error, never a dead
+          // session — the stream is the session (observed 2026-08-18: a
+          // malformed tasks.json shape threw in observeToolCall and killed the
+          // stream mid-ceremony; the outer catch treats a throw as stream death).
+          slog('session', 'error', 'translate failed — event skipped', {
+            err: String(err),
+            msgType: (raw as any)?.type,
+          });
+          this.emit({ type: 'error', message: `translate failed (event skipped): ${String(err)}` });
+        }
       }
     } catch (err) {
       if (this.disposed) return; // aborted on purpose — a fresh session owns the bus now

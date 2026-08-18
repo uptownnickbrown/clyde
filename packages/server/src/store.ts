@@ -140,7 +140,7 @@ export class ClydeStore {
   }
 
   loadTasks(): TaskItem[] {
-    return this.readJson<TaskItem[]>(this.tasksPath) ?? [];
+    return normalizeTasks(this.readJson<unknown>(this.tasksPath));
   }
 
   saveTasks(tasks: TaskItem[]) {
@@ -194,4 +194,44 @@ export class ClydeStore {
       return null;
     }
   }
+}
+
+/** tasks.json is agent-edited (and, via the review ceremony, LLM-edited on
+ *  instruction), so its shape is untrusted: accept a bare array or a
+ *  {tasks: [...]} wrapper, stringify ids, map title/description LLM-isms onto
+ *  subject/detail, drop entries with no id/subject, and default unknown
+ *  statuses to pending. A malformed file must degrade quietly, never take the
+ *  session down (observed 2026-08-18: an object-shaped tasks.json made
+ *  this.tasks.find throw inside the stream loop and killed the SDK stream). */
+export function normalizeTasks(raw: unknown): TaskItem[] {
+  const arr = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object' && Array.isArray((raw as { tasks?: unknown }).tasks)
+      ? (raw as { tasks: unknown[] }).tasks
+      : null;
+  if (!arr) return [];
+  const STATUSES = new Set<TaskItem['status']>(['pending', 'in_progress', 'completed', 'declined']);
+  const tasks: TaskItem[] = [];
+  for (const entry of arr) {
+    if (!entry || typeof entry !== 'object') continue;
+    const o = entry as Record<string, unknown>;
+    const subject = o.subject ?? o.title ?? o.content;
+    if (o.id == null || subject == null) continue;
+    const task: TaskItem = {
+      id: String(o.id),
+      subject: String(subject),
+      status: STATUSES.has(o.status as TaskItem['status']) ? (o.status as TaskItem['status']) : 'pending',
+    };
+    const detail = o.detail ?? o.description;
+    if (detail != null) task.detail = String(detail);
+    if (typeof o.activeForm === 'string') task.activeForm = o.activeForm;
+    if (o.source && typeof o.source === 'object') {
+      const s = o.source as Record<string, unknown>;
+      if (s.review != null && s.item != null) task.source = { review: String(s.review), item: Number(s.item) };
+    }
+    if (o.batch != null) task.batch = String(o.batch);
+    if (o.declineReason != null) task.declineReason = String(o.declineReason);
+    tasks.push(task);
+  }
+  return tasks;
 }
