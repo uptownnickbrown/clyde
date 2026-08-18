@@ -46,6 +46,21 @@ export function startFixtureServer(port = 4123) {
       return;
     }
 
+    if (url.pathname === '/api/upload' && req.method === 'POST') {
+      const name = (url.searchParams.get('name') ?? 'file').replace(/[^\w.-]+/g, '_');
+      const dir = path.join(PROJECT_ROOT, '.clyde', 'uploads');
+      fs.mkdirSync(dir, { recursive: true });
+      const chunks = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        const rel = path.posix.join('.clyde', 'uploads', `qa-${name}`);
+        fs.writeFileSync(path.join(PROJECT_ROOT, rel), Buffer.concat(chunks));
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ path: rel }));
+      });
+      return;
+    }
+
     if (url.pathname === '/api/logs') {
       res.writeHead(200, { 'content-type': 'text/plain' });
       res.end(FIXTURE_LOGS);
@@ -78,6 +93,13 @@ export function startFixtureServer(port = 4123) {
   const wss = new WebSocketServer({ server, path: '/ws' });
   wss.on('connection', (ws) => {
     ws.send(JSON.stringify({ type: 'hello', snapshot }));
+    // Fresh working-status event so the work-bar timer starts near zero at capture time.
+    ws.send(
+      JSON.stringify({
+        type: 'event',
+        event: { id: 'e-live-status', ts: new Date().toISOString(), type: 'status', status: 'working' },
+      }),
+    );
     // Stream a live turn so screenshots capture the in-flight state.
     let i = 0;
     const words = DELTA_TEXT.split(' ');

@@ -41,6 +41,14 @@ try {
   await page.waitForTimeout(300);
   await shot('02-conversation-tail');
 
+  // 2b — composer attachment chips: file via the (hidden) picker input + text alongside
+  await page.setInputFiles('.composer input[type="file"]', path.join(HERE, 'fixtures/attachment-sample.png'));
+  await page.waitForSelector('.attachment img');
+  await page.locator('.composer textarea').fill('Here is the design reference — match the rail spacing to this.');
+  await shot('02b-composer-attachment');
+  await page.locator('.attachment-x').click();
+  await page.locator('.composer textarea').fill('');
+
   // 3 — expanded activity chip in the flow
   await page.evaluate(() => document.querySelector('.conversation').scrollTo(0, 0));
   const chip = page.locator('.activity-chip > button').first();
@@ -87,6 +95,11 @@ try {
   await page.locator('.tabs button', { hasText: 'reviews' }).click();
   await page.waitForTimeout(500);
   await shot('10-reviews-tab');
+
+  // 10b — agents tab: one completed dispatch, one running with the delegated-task link
+  await page.locator('.tabs button', { hasText: 'agents' }).click();
+  await page.locator('.agents-panel .linklike').first().click(); // expand newest prompt
+  await shot('10b-agents-tab');
 
   // 11 — logs tab
   await page.locator('.tabs button', { hasText: 'logs' }).click();

@@ -31,11 +31,19 @@ project state lives in on-screen panels. Follow these standing orders:
 - **QA panels**: when you produce visual QA artifacts (screenshots, plots, reports,
   metrics), publish them to the UI with the push_panel tool so the user can judge
   them without digging through files.
+- **Reviews**: batch feedback lives in .clyde/reviews/*.md checklists. Triage every
+  item — accept it into a task, fix it and check it off with the commit sha, or push
+  back with reasons. Never silently drop one; the user verifies checked items.
 - **Delegate aggressively**: hand substantial, well-scoped implementation work to
   subagents via the Task tool while you coordinate, review their output, and stay
-  responsive in the conversation. User messages can arrive mid-turn — address them
-  promptly even while delegated work is in flight; never let a long build block
-  the dialogue.
+  responsive in the conversation. When delegating a task-list item, put its exact
+  subject in the Task description and mark it in_progress — the UI links them.
+- **Mid-turn messages**: when user messages arrive while you are working, answer
+  each one in your very next message — sidebar comments FIRST, each reply beginning
+  with its exact [[sidebar:<id>]] token — with a brief direct answer before
+  continuing the work. Filing a task is in addition to replying, never instead of
+  it. Prefer ending turns at logical checkpoints over marathon turns; queued
+  follow-ups deliver in order.
 - **Sidebar replies**: when a user message is marked as a sidebar comment on an
   earlier excerpt, it includes a token like [[sidebar:ab12cd34]]. Reply directly and
   self-containedly, beginning every message that belongs to that reply with that
@@ -76,6 +84,8 @@ export class AgentSession {
   private currentDelivery: Delivery | null = null;
   private threadReplyPending = false;
   private git: GitWatcher;
+  /** TaskCreate tool_use ids awaiting their result, mapped to provisional task ids. */
+  private pendingTaskCreates = new Map<string, string>();
 
   constructor(
     readonly store: ClydeStore,
@@ -136,11 +146,48 @@ export class AgentSession {
       } as any,
     });
     void this.consume();
+    // Persisted leftovers (e.g. queued across a restart) deliver first, in order.
+    this.drainNext();
+    if (resumeSdkSessionId) this.maybeAutoResume();
   }
 
-  // ---------- user input: queue + urgent override ----------
+  /** Dev restarts are constant when Clyde builds Clyde, so a turn cut short by a
+   *  restart continues automatically — visibly, at most once per boot, only when
+   *  nothing else is queued, and never chained off a previous auto-resume. */
+  private maybeAutoResume() {
+    if (this.status === 'working' || this.userQueue.length) return;
+    const events = this.store.loadEvents();
+    const last = events[events.length - 1];
+    if (!last) return;
+    if (Date.now() - new Date(last.ts).getTime() > 30 * 60_000) {
+      slog('session', 'info', 'auto-resume skipped: log is stale');
+      return;
+    }
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (e.type === 'turn_complete') return; // last turn finished cleanly
+      if (e.type === 'user_message') {
+        if (e.text.startsWith('[Auto-resume]')) {
+          slog('session', 'warn', 'auto-resume skipped: previous auto-resume never completed (crash loop?)');
+          return;
+        }
+        slog('session', 'info', 'auto-resume: last turn was cut short, continuing');
+        this.enqueue(
+          '[Auto-resume] The server restarted mid-turn. Review the transcript tail and continue your ' +
+            'in-progress work from where it leaves off — re-verify any half-applied or uncommitted changes ' +
+            'before building on them. If nothing remains, say so briefly and go idle.',
+        );
+        return;
+      }
+    }
+  }
 
-  enqueue(text: string, opts: { urgent?: boolean; threadId?: string; newThreadAnchor?: ThreadAnchor } = {}) {
+  // ---------- user input: strict FIFO + urgent override ----------
+
+  enqueue(
+    text: string,
+    opts: { urgent?: boolean; threadId?: string; newThreadAnchor?: ThreadAnchor; attachments?: string[] } = {},
+  ) {
     let threadId = opts.threadId;
     if (opts.newThreadAnchor) {
       const thread: Thread = {
@@ -158,39 +205,63 @@ export class AgentSession {
       id: crypto.randomUUID(),
       text,
       threadId,
+      attachments: opts.attachments,
       urgent: opts.urgent ?? false,
       queuedAt: new Date().toISOString(),
     };
-    if (this.status === 'working' && !item.urgent) {
+    if (item.urgent) {
+      // Urgent deliberately jumps the queue: stop in-flight work, deliver immediately.
+      if (this.status === 'working') {
+        slog('session', 'info', 'urgent: interrupting in-flight turn');
+        void this.q?.interrupt().catch((err) => slog('session', 'warn', 'interrupt failed', { err: String(err) }));
+      }
+      this.deliver(item);
+      return;
+    }
+    if (this.status === 'working') {
       if (process.env.CLYDE_STEERING !== '0') {
+        // FIFO: flush anything already queued before steering the newest in.
+        while (this.userQueue.length) this.deliverMidTurn(this.userQueue.shift()!);
+        this.saveQueue();
         this.deliverMidTurn(item);
         return;
       }
       slog('session', 'info', 'queued (agent working)', { queueLen: this.userQueue.length + 1, threadId: item.threadId });
       this.userQueue.push(item);
-      this.store.saveQueue(this.userQueue);
-      this.bus.queue(this.userQueue);
+      this.saveQueue();
       return;
     }
-    if (this.status === 'working' && item.urgent) {
-      slog('session', 'info', 'urgent: interrupting in-flight turn');
-      void this.q?.interrupt().catch((err) => slog('session', 'warn', 'interrupt failed', { err: String(err) }));
-    }
-    this.deliver(item);
+    // Idle: join the back of the line, deliver from the front — leftovers first.
+    this.userQueue.push(item);
+    this.saveQueue();
+    this.drainNext();
   }
 
   withdraw(queuedId: string) {
     this.userQueue = this.userQueue.filter((i) => i.id !== queuedId);
+    this.saveQueue();
+  }
+
+  private saveQueue() {
     this.store.saveQueue(this.userQueue);
     this.bus.queue(this.userQueue);
+  }
+
+  /** Deliver the queue head if we're not mid-turn — keeps ordering strictly FIFO. */
+  private drainNext() {
+    if (this.status === 'working') return;
+    const next = this.userQueue.shift();
+    if (!next) return;
+    this.saveQueue();
+    this.deliver(next);
   }
 
   /** Steering: push into the in-flight turn — the harness surfaces it to the model
    *  alongside its next tool result, so answers don't wait for the turn boundary. */
   private deliverMidTurn(item: QueuedItem) {
     slog('session', 'info', 'steering: delivered mid-turn', { threadId: item.threadId });
-    this.emit({ type: 'user_message', text: item.text, threadId: item.threadId });
-    const content = item.threadId ? this.composeThreadMessage(item) : item.text;
+    this.emit({ type: 'user_message', text: item.text, threadId: item.threadId, attachments: item.attachments });
+    const content = withAttachments(item.threadId ? this.composeThreadMessage(item) : item.text, item.attachments);
     this.pushInput({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null });
   }
 
@@ -218,8 +289,8 @@ export class AgentSession {
     this.currentDelivery = { turnId, threadId: item.threadId };
     this.threadReplyPending = Boolean(item.threadId);
     this.setStatus('working');
-    this.emit({ type: 'user_message', text: item.text, threadId: item.threadId });
-    const content = item.threadId ? this.composeThreadMessage(item) : item.text;
+    this.emit({ type: 'user_message', text: item.text, threadId: item.threadId, attachments: item.attachments });
+    const content = withAttachments(item.threadId ? this.composeThreadMessage(item) : item.text, item.attachments);
     this.pushInput({
       type: 'user',
       message: { role: 'user', content },
@@ -319,7 +390,7 @@ export class AgentSession {
               turnId,
               parentToolUseId: parent ?? undefined,
             });
-            this.observeToolCall(block.name, block.input);
+            this.observeToolCall(block.id, block.name, block.input);
           }
         }
         const usage = msg.message?.usage;
@@ -344,6 +415,7 @@ export class AgentSession {
                 ok: !block.is_error,
                 preview: previewOf(block.content),
               });
+              this.resolveTaskCreate(block.tool_use_id, previewOf(block.content));
             }
           }
         }
@@ -362,10 +434,9 @@ export class AgentSession {
         }
         this.currentDelivery = null;
         void this.git.poll();
-        const next = this.userQueue.shift();
-        if (next) {
-          this.store.saveQueue(this.userQueue);
-          this.bus.queue(this.userQueue);
+        if (this.userQueue.length) {
+          const next = this.userQueue.shift()!;
+          this.saveQueue();
           this.deliver(next);
         } else {
           this.setStatus('idle');
@@ -376,30 +447,40 @@ export class AgentSession {
   }
 
   /** Derive Clyde-level events from meaningful tool calls. */
-  private observeToolCall(name: string, input: any) {
+  private observeToolCall(toolUseId: string, name: string, input: any) {
     if (name === 'Task' || name === 'Agent') {
+      // Real block id so dispatch ↔ tool_result ↔ subagent activity correlate (R8).
       this.emit({
         type: 'dispatch',
-        toolUseId: crypto.randomUUID(),
+        toolUseId,
         agentType: input?.subagent_type,
         description: input?.description,
         prompt: input?.prompt ?? JSON.stringify(input),
       });
     }
     if (name === 'TaskCreate') {
+      const provisional = crypto.randomUUID();
       this.tasks.push({
-        id: input?.id ?? crypto.randomUUID(),
+        id: provisional,
         subject: input?.subject ?? input?.content ?? input?.description ?? 'task',
         status: 'pending',
         detail: input?.description,
+        activeForm: input?.activeForm,
       });
+      // The harness assigns the real id ("Task #N created") in the tool result.
+      this.pendingTaskCreates.set(toolUseId, provisional);
       this.tasksChanged();
     }
     if (name === 'TaskUpdate') {
       const task = this.tasks.find((t) => t.id === (input?.taskId ?? input?.id));
       if (task) {
-        if (input?.status) task.status = input.status;
-        if (input?.subject) task.subject = input.subject;
+        if (input?.status === 'deleted') {
+          this.tasks = this.tasks.filter((t) => t !== task);
+        } else {
+          if (input?.status) task.status = input.status;
+          if (input?.subject) task.subject = input.subject;
+          if (input?.activeForm) task.activeForm = input.activeForm;
+        }
         this.tasksChanged();
       }
     }
@@ -408,7 +489,21 @@ export class AgentSession {
         id: String(i),
         subject: t.content ?? '',
         status: t.status ?? 'pending',
+        activeForm: t.activeForm,
       }));
+      this.tasksChanged();
+    }
+  }
+
+  /** Swap a provisional TaskCreate id for the harness-assigned "#N" from the result. */
+  private resolveTaskCreate(toolUseId: string, preview?: string) {
+    const provisional = this.pendingTaskCreates.get(toolUseId);
+    if (!provisional) return;
+    this.pendingTaskCreates.delete(toolUseId);
+    const m = /#(\d+)/.exec(preview ?? '');
+    const task = this.tasks.find((t) => t.id === provisional);
+    if (m && task) {
+      task.id = m[1];
       this.tasksChanged();
     }
   }
@@ -460,6 +555,12 @@ export class AgentSession {
     if (w) w(m);
     else this.pending.push(m);
   }
+}
+
+function withAttachments(text: string, attachments?: string[]): string {
+  return attachments?.length
+    ? `${text}\n\n[Attached files — read them with the Read tool: ${attachments.join(', ')}]`
+    : text;
 }
 
 function previewOf(content: unknown): string | undefined {

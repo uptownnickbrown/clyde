@@ -4,7 +4,7 @@ import { Md } from './Md';
 
 // ---------- Left rail ----------
 
-export function TasksPanel({ tasks }: { tasks: TaskItem[] }) {
+export function TasksPanel({ tasks, delegated }: { tasks: TaskItem[]; delegated?: Set<string> }) {
   const icon = { pending: '○', in_progress: '◐', completed: '●' } as const;
   return (
     <section className="panel">
@@ -13,11 +13,59 @@ export function TasksPanel({ tasks }: { tasks: TaskItem[] }) {
       <ul className="tasks">
         {tasks.map((t) => (
           <li key={t.id} className={`task-${t.status}`}>
-            <span className="task-icon">{icon[t.status]}</span> {t.subject}
+            <span className="task-icon">{icon[t.status]}</span>
+            <span>
+              {t.subject}
+              {delegated?.has(t.subject) && <span className="task-delegated">delegated</span>}
+            </span>
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+/** R8: subagents as first-class cards — status, duration, live tool count. */
+export function AgentsPanel({ events }: { events: SessionEvent[] }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const dispatches = events.filter((e): e is Extract<SessionEvent, { type: 'dispatch' }> => e.type === 'dispatch');
+  const resultTs = new Map<string, string>();
+  const toolCounts = new Map<string, number>();
+  for (const e of events) {
+    if (e.type === 'tool_result') resultTs.set(e.toolUseId, e.ts);
+    if (e.type === 'tool_call' && e.parentToolUseId) {
+      toolCounts.set(e.parentToolUseId, (toolCounts.get(e.parentToolUseId) ?? 0) + 1);
+    }
+  }
+  return (
+    <div className="agents-panel">
+      {dispatches.length === 0 && <div className="empty">no subagents dispatched yet</div>}
+      {[...dispatches].reverse().map((d) => {
+        const doneTs = resultTs.get(d.toolUseId);
+        const secs = Math.max(
+          0,
+          Math.round(((doneTs ? new Date(doneTs).getTime() : Date.now()) - new Date(d.ts).getTime()) / 1000),
+        );
+        const dur = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
+        const tools = toolCounts.get(d.toolUseId) ?? 0;
+        return (
+          <section key={d.id} className={`panel agent-card ${doneTs ? 'done' : 'running'}`}>
+            <div className="agent-line">
+              <span className={`agent-status ${doneTs ? 'done' : 'running'}`}>{doneTs ? '●' : '◐'}</span>
+              <strong>{d.description ?? d.agentType ?? 'subagent'}</strong>
+              <span className="agent-meta">
+                {d.agentType ?? 'agent'} · {dur}
+                {tools > 0 && ` · ${tools} tool${tools === 1 ? '' : 's'}`}
+              </span>
+            </div>
+            <button className="linklike" onClick={() => setOpenId(openId === d.id ? null : d.id)}>
+              {openId === d.id ? 'hide prompt' : 'show prompt'}
+            </button>
+            {openId === d.id && <pre className="agent-prompt">{d.prompt.slice(0, 4000)}</pre>}
+          </section>
+        );
+      })}
+    </div>
   );
 }
 

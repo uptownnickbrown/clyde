@@ -28,6 +28,8 @@ export interface TaskItem {
   subject: string;
   status: 'pending' | 'in_progress' | 'completed';
   detail?: string;
+  /** Present-continuous label shown while in_progress ("Building the QA harness"). */
+  activeForm?: string;
 }
 
 // ---------- Panels (agent-pushed UI) ----------
@@ -55,7 +57,7 @@ export interface CommitInfo {
 
 export type SessionEventBody =
   | { type: 'session_started'; sdkSessionId?: string; model: string; cwd: string }
-  | { type: 'user_message'; text: string; threadId?: string }
+  | { type: 'user_message'; text: string; threadId?: string; attachments?: string[] }
   | { type: 'assistant_message'; markdown: string; turnId: string; threadId?: string }
   | {
       type: 'tool_call';
@@ -92,6 +94,8 @@ export interface QueuedItem {
   threadId?: string;
   /** Present when this item creates a new thread on delivery. */
   newThreadAnchor?: ThreadAnchor;
+  /** Project-root-relative paths of uploaded files (see POST /api/upload). */
+  attachments?: string[];
   urgent: boolean;
   queuedAt: string;
 }
@@ -99,7 +103,7 @@ export interface QueuedItem {
 // ---------- WebSocket protocol ----------
 
 export type ClientMessage =
-  | { type: 'send_message'; text: string; urgent?: boolean }
+  | { type: 'send_message'; text: string; urgent?: boolean; attachments?: string[] }
   | { type: 'create_thread'; anchor: ThreadAnchor; text: string; urgent?: boolean }
   | { type: 'thread_reply'; threadId: string; text: string; urgent?: boolean }
   | { type: 'resolve_thread'; threadId: string }

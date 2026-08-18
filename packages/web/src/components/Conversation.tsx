@@ -33,8 +33,23 @@ export function Conversation({
 }) {
   const [pending, setPending] = useState<PendingComment | null>(null);
   const [composing, setComposing] = useState<{ messageId: string; quote: string } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef(true); // near the bottom → follow new content
+  const hydratedRef = useRef(false);
 
   const { items, threadMessages } = useMemo(() => deriveItems(events), [events]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || events.length === 0) return;
+    const last = events[events.length - 1];
+    const ownSend = last.type === 'user_message' && !last.threadId;
+    if (!hydratedRef.current || pinnedRef.current || ownSend) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'instant' as ScrollBehavior });
+      pinnedRef.current = true;
+      hydratedRef.current = true;
+    }
+  }, [events, liveText]);
   const threadsByMessage = useMemo(() => {
     const map = new Map<string, Thread[]>();
     for (const t of threads) {
@@ -56,7 +71,15 @@ export function Conversation({
   };
 
   return (
-    <div className="conversation" onMouseDown={() => setPending(null)}>
+    <div
+      className="conversation"
+      ref={scrollRef}
+      onScroll={() => {
+        const el = scrollRef.current;
+        if (el) pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      }}
+      onMouseDown={() => setPending(null)}
+    >
       <div className="conversation-doc">
       {items.map((item) => {
         switch (item.kind) {
@@ -64,6 +87,24 @@ export function Conversation({
             return (
               <div key={item.event.id} className="msg-user">
                 <Md>{item.event.text}</Md>
+                {(item.event.attachments?.length ?? 0) > 0 && (
+                  <div className="msg-attachments">
+                    {item.event.attachments!.map((p) => (
+                      <a
+                        key={p}
+                        href={`/api/project-file?path=${encodeURIComponent(p)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {/\.(png|jpe?g|gif|webp|svg)$/i.test(p) ? (
+                          <img src={`/api/project-file?path=${encodeURIComponent(p)}`} alt={p} />
+                        ) : (
+                          <span className="attachment-file">📄 {p.split('/').pop()}</span>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           case 'assistant': {

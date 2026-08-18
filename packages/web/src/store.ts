@@ -26,6 +26,8 @@ export interface UIState {
   liveText: Record<string, string>;
   contextTokens: number | null;
   costUsd: number | null;
+  /** When the current working stretch began (drives the work-bar timer). */
+  workingSince: string | null;
 }
 
 const initial: UIState = {
@@ -42,6 +44,7 @@ const initial: UIState = {
   liveText: {},
   contextTokens: null,
   costUsd: null,
+  workingSince: null,
 };
 
 type Action =
@@ -55,7 +58,12 @@ function applyEvent(state: UIState, event: SessionEvent): UIState {
     case 'assistant_message':
       return { ...next, liveText: { ...state.liveText, [event.turnId]: '' } };
     case 'status':
-      return { ...next, status: event.status };
+      return {
+        ...next,
+        status: event.status,
+        workingSince:
+          event.status === 'working' ? (state.status === 'working' ? state.workingSince : event.ts) : null,
+      };
     case 'usage':
       return {
         ...next,
@@ -83,6 +91,7 @@ function reducer(state: UIState, action: Action): UIState {
     case 'hello': {
       const s = action.snapshot;
       const usage = [...s.events].reverse().find((e) => e.type === 'usage' && e.contextTokens);
+      const lastStatus = [...s.events].reverse().find((e) => e.type === 'status');
       return {
         ...initial,
         connected: true,
@@ -96,6 +105,7 @@ function reducer(state: UIState, action: Action): UIState {
         commits: s.commits,
         status: s.status,
         contextTokens: usage?.type === 'usage' ? (usage.contextTokens ?? null) : null,
+        workingSince: s.status === 'working' && lastStatus ? lastStatus.ts : null,
       };
     }
     case 'server': {

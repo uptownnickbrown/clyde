@@ -1,6 +1,7 @@
 node_modules/
 dist/
 qa/screenshots/
+.clyde/uploads/
 .clyde/logs/
 *.tsbuildinfo
 .DS_Store

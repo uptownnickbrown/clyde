@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useClyde } from './store';
 import { Conversation } from './components/Conversation';
 import { Composer } from './components/Composer';
+import { WorkBar } from './components/WorkBar';
 import {
   ActivityPanel,
+  AgentsPanel,
   ContextPanel,
   GitPanel,
   GoalPanel,
@@ -13,7 +15,7 @@ import {
   TasksPanel,
 } from './components/Sidebars';
 
-type RightTab = 'goal' | 'panels' | 'reviews' | 'activity' | 'context' | 'logs';
+type RightTab = 'goal' | 'panels' | 'reviews' | 'agents' | 'activity' | 'context' | 'logs';
 
 export default function App() {
   const { state, send } = useClyde();
@@ -37,6 +39,17 @@ export default function App() {
 
   const pct = state.contextTokens ? Math.min(100, (state.contextTokens / 1_000_000) * 100) : 0;
 
+  // Tasks currently delegated: dispatches whose description names a task and whose
+  // tool_result hasn't landed yet (the R8 linking convention).
+  const resultIds = new Set(
+    state.events.filter((e) => e.type === 'tool_result').map((e) => (e.type === 'tool_result' ? e.toolUseId : '')),
+  );
+  const delegated = new Set(
+    state.events
+      .filter((e) => e.type === 'dispatch' && e.description && !resultIds.has(e.toolUseId))
+      .map((e) => (e.type === 'dispatch' ? e.description! : '')),
+  );
+
   return (
     <div className="app">
       <header className="header">
@@ -56,19 +69,25 @@ export default function App() {
 
       <div className="columns">
         <aside className="left-rail">
-          <TasksPanel tasks={state.tasks} />
+          <TasksPanel tasks={state.tasks} delegated={delegated} />
           <GitPanel commits={state.commits} />
         </aside>
 
         <main className="center">
           <Conversation events={state.events} threads={state.threads} liveText={state.liveText} send={send} />
+          <WorkBar
+            status={state.connected ? state.status : 'disconnected'}
+            since={state.workingSince}
+            tasks={state.tasks}
+            events={state.events}
+          />
           <Composer status={state.status} queue={state.queue} send={send} />
         </main>
 
         <div className="rail-resizer" onMouseDown={startRailDrag} title="Drag to resize" />
         <aside className="right-rail" style={{ width: railW }}>
           <nav className="tabs">
-            {(['goal', 'panels', 'reviews', 'activity', 'context', 'logs'] as RightTab[]).map((t) => (
+            {(['goal', 'panels', 'reviews', 'agents', 'activity', 'context', 'logs'] as RightTab[]).map((t) => (
               <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
                 {t}
               </button>
@@ -77,6 +96,7 @@ export default function App() {
           {tab === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
           {tab === 'panels' && <PushedPanels panels={state.panels} />}
           {tab === 'reviews' && <ReviewsPanel />}
+          {tab === 'agents' && <AgentsPanel events={state.events} />}
           {tab === 'activity' && <ActivityPanel events={state.events} />}
           {tab === 'logs' && <LogsPanel />}
           {tab === 'context' && (

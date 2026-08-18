@@ -59,6 +59,9 @@ export function buildSnapshot(projectRoot) {
     { id: 'tc3', ts: T(4), type: 'tool_call', toolUseId: 'tu3', tool: 'Bash', input: { command: 'npm install && npm run typecheck' }, turnId: 't1' },
     { id: 'tr3', ts: T(4), type: 'tool_result', toolUseId: 'tu3', ok: false, preview: 'error TS2345: Argument of type …' },
     { id: 'd1', ts: T(4), type: 'dispatch', toolUseId: 'tu4', agentType: 'Explore', description: 'Survey Agent SDK streaming API', prompt: 'Read the @anthropic-ai/claude-agent-sdk types and document the streaming-input query() contract: message shapes, interrupt, partial messages.' },
+    { id: 'tc-s1', ts: T(4), type: 'tool_call', toolUseId: 'tu4a', tool: 'Read', input: { file_path: `${projectRoot}/node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts` }, turnId: 't1', parentToolUseId: 'tu4' },
+    { id: 'tc-s2', ts: T(5), type: 'tool_call', toolUseId: 'tu4b', tool: 'Bash', input: { command: 'grep -rn "interrupt" node_modules/@anthropic-ai/claude-agent-sdk' }, turnId: 't1', parentToolUseId: 'tu4' },
+    { id: 'tr-d1', ts: T(5), type: 'tool_result', toolUseId: 'tu4', ok: true, preview: 'Documented the streaming contract: push user messages over an async generator…' },
     { id: 'tc4', ts: T(5), type: 'tool_call', toolUseId: 'tu5', tool: 'Edit', input: { file_path: `${projectRoot}/packages/server/src/agentSession.ts` }, turnId: 't1' },
     { id: 'tr4', ts: T(5), type: 'tool_result', toolUseId: 'tu5', ok: true },
     { id: 'a2', ts: T(6), type: 'assistant_message', turnId: 't1', markdown: A2 },
@@ -69,11 +72,14 @@ export function buildSnapshot(projectRoot) {
     // Open sidebar thread anchored on a2
     { id: 'u-th1', ts: T(7), type: 'user_message', threadId: 'th1', text: 'Why append before broadcasting? If the write fails we drop the turn on the floor.' },
     { id: 'a-th1', ts: T(8), type: 'assistant_message', turnId: 't2', threadId: 'th1', markdown: 'Deliberate: the log is the source of truth — if it cannot be written, showing the message anyway would make the UI and the file disagree. I would rather surface the write error loudly. Happy to add retry-with-backoff as belt and suspenders.' },
-    { id: 'u2', ts: T(9), type: 'user_message', text: 'Looks right. Now set up the QA loop from the scope — Playwright screenshots, pushed to a gallery panel.' },
+    { id: 'u2', ts: T(9), type: 'user_message', text: 'Looks right. Now set up the QA loop from the scope — Playwright screenshots, pushed to a gallery panel. Match the reference design attached.', attachments: ['qa/fixtures/attachment-sample.png'] },
     { id: 'a3', ts: T(10), type: 'assistant_message', turnId: 't3', markdown: A3 },
     // Resolved thread anchored on a3
     { id: 'u-th2', ts: T(11), type: 'user_message', threadId: 'th2', text: 'This is the success criterion I care most about — make the gallery dense.' },
     { id: 'a-th2', ts: T(11), type: 'assistant_message', turnId: 't3b', threadId: 'th2', markdown: 'Noted — recorded in DECISIONS.md: the gallery is the primary QA surface, density over chrome.' },
+    { id: 'd2', ts: T(12), type: 'dispatch', toolUseId: 'tu8', agentType: 'general-purpose', description: 'Playwright screenshot QA harness', prompt: 'Build qa/screenshot.mjs: launch the fixture server, capture every UI state with Playwright at 1440x900@2x into qa/screenshots/, and report what you captured.' },
+    { id: 'tc-s3', ts: T(12), type: 'tool_call', toolUseId: 'tu8a', tool: 'Write', input: { file_path: `${projectRoot}/qa/screenshot.mjs` }, turnId: 't3', parentToolUseId: 'tu8' },
+    { id: 'tc-s4', ts: T(13), type: 'tool_call', toolUseId: 'tu8b', tool: 'Bash', input: { command: 'node qa/screenshot.mjs' }, turnId: 't3', parentToolUseId: 'tu8' },
     { id: 'tc5', ts: T(12), type: 'tool_call', toolUseId: 'tu6', tool: 'Bash', input: { command: 'node qa/screenshot.mjs' }, turnId: 't3' },
     { id: 'tr5', ts: T(12), type: 'tool_result', toolUseId: 'tu6', ok: true, preview: 'captured 8 screenshots → qa/screenshots/' },
     { id: 'tc6', ts: T(12), type: 'tool_call', toolUseId: 'tu7', tool: 'Read', input: { file_path: `${projectRoot}/qa/screenshots/01-overview.png` }, turnId: 't3' },
@@ -103,7 +109,7 @@ export function buildSnapshot(projectRoot) {
       },
     ],
     queue: [
-      { id: 'q1', text: 'Also: the composer textarea should grow with content', urgent: false, queuedAt: T(14) },
+      { id: 'q1', text: 'Also: the composer textarea should grow with content', attachments: ['.clyde/uploads/minimap-sketch.png'], urgent: false, queuedAt: T(14) },
       { id: 'q2', text: 'Can we get commit markers on the minimap?', urgent: false, queuedAt: T(14) },
     ],
     panels: [

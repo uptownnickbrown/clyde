@@ -119,8 +119,42 @@ body {
   box-shadow: 0 4px 14px rgba(0,0,0,0.5);
 }
 
+/* ---------- work bar ---------- */
+.workbar {
+  display: flex; align-items: center; gap: 8px; padding: 5px 16px;
+  font-size: 12px; color: var(--text-dim); border-top: 1px solid var(--border); background: var(--bg-panel);
+}
+.workbar-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.workbar-detail { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workbar-tool { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-left: auto; }
+.workbar.working { color: var(--amber); }
+.workbar.working .workbar-dot { background: var(--amber); animation: pulse 1.2s ease-in-out infinite; }
+.workbar.idle .workbar-dot { background: var(--green); }
+.workbar.disconnected { color: var(--red); }
+.workbar.disconnected .workbar-dot { background: var(--red); }
+@keyframes pulse { 50% { opacity: 0.25; } }
+
 /* ---------- composer ---------- */
-.composer { border-top: 1px solid var(--border); padding: 10px 16px; background: var(--bg-panel); }
+.composer { border-top: none; padding: 10px 16px; background: var(--bg-panel); }
+.composer.dragging textarea { border-color: var(--accent); background: var(--accent-dim); }
+
+.attachments { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.attachment { position: relative; }
+.attachment img { height: 64px; border-radius: 8px; border: 1px solid var(--border); display: block; }
+.attachment-uploading { position: absolute; bottom: 3px; left: 5px; font-size: 10px; color: var(--amber); }
+.attachment-file {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--bg-raised);
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12.5px;
+}
+.attachment-x {
+  position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-dim);
+  font-size: 10px; padding: 0; line-height: 1;
+}
+.composer .attach { padding: 6px 12px; font-size: 15px; line-height: 1.2; }
+
+.msg-attachments { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
+.msg-attachments img { height: 120px; border-radius: 8px; border: 1px solid var(--border); display: block; }
 .composer textarea {
   width: 100%; min-height: 96px; max-height: 280px; resize: none; background: var(--bg);
   border: 1px solid var(--border); border-radius: 10px; color: var(--text);
@@ -156,6 +190,21 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 .tasks, .commits { list-style: none; margin: 0; padding: 0; font-size: 13px; }
 .tasks li { padding: 3px 0; display: flex; gap: 8px; }
+.task-delegated {
+  margin-left: 6px; font-size: 10px; background: var(--accent-dim); color: var(--accent);
+  border-radius: 8px; padding: 1px 7px; vertical-align: 1px;
+}
+
+.agents-panel .agent-card.running { border-left: 2px solid var(--amber); }
+.agents-panel .agent-card.done { border-left: 2px solid var(--green); }
+.agent-line { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
+.agent-status.running { color: var(--amber); }
+.agent-status.done { color: var(--green); }
+.agent-meta { color: var(--text-dim); font-size: 11.5px; }
+.agent-prompt {
+  background: var(--bg-raised); border-radius: 6px; padding: 8px; margin: 6px 0 0;
+  font-family: var(--mono); font-size: 11px; white-space: pre-wrap; max-height: 300px; overflow-y: auto;
+}
 .task-completed { color: var(--text-dim); text-decoration: line-through; }
 .task-in_progress .task-icon { color: var(--amber); }
 .task-completed .task-icon { color: var(--green); }
@@ -179,8 +228,8 @@ button.linklike { background: none; border: none; color: var(--accent); font-siz
 
 .tabs { display: flex; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-panel); z-index: 2; }
 .tabs button {
-  flex: 1; background: none; border: none; color: var(--text-dim); padding: 10px 0; font-size: 12.5px;
-  border-bottom: 2px solid transparent;
+  flex: 1; background: none; border: none; color: var(--text-dim); padding: 10px 1px; font-size: 11px;
+  border-bottom: 2px solid transparent; text-overflow: ellipsis; overflow: hidden;
 }
 .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
 

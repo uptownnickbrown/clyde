@@ -62,6 +62,28 @@ export async function startServer(projectRoot: string, port: number, freshSessio
       return;
     }
 
+    // Attachment uploads: raw body → .clyde/uploads/, returns the project-relative path.
+    if (url.pathname === '/api/upload' && req.method === 'POST') {
+      const name = (url.searchParams.get('name') ?? 'file').replace(/[^\w.-]+/g, '_').slice(-80);
+      const dir = path.join(projectRoot, '.clyde', 'uploads');
+      fs.mkdirSync(dir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const rel = path.posix.join('.clyde', 'uploads', `${stamp}-${name}`);
+      const chunks: Buffer[] = [];
+      let size = 0;
+      req.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > 30_000_000) req.destroy();
+        else chunks.push(c);
+      });
+      req.on('end', () => {
+        fs.writeFileSync(path.join(projectRoot, rel), Buffer.concat(chunks));
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ path: rel }));
+      });
+      return;
+    }
+
     if (url.pathname === '/api/logs') {
       const n = Math.min(Number(url.searchParams.get('tail') ?? 200) || 200, 2000);
       res.writeHead(200, { 'content-type': 'text/plain' });
@@ -128,7 +150,7 @@ export async function startServer(projectRoot: string, port: number, freshSessio
       slog('ws', 'info', `client message: ${msg.type}`);
       switch (msg.type) {
         case 'send_message':
-          session.enqueue(msg.text, { urgent: msg.urgent });
+          session.enqueue(msg.text, { urgent: msg.urgent, attachments: msg.attachments });
           break;
         case 'create_thread':
           session.enqueue(msg.text, { urgent: msg.urgent, newThreadAnchor: msg.anchor });
@@ -193,5 +215,6 @@ function expandGlob(root: string, glob: string): string[] {
     }
   };
   walk(absBase);
-  return results.sort().reverse().slice(0, 50);
+  // Ascending by name — numbered QA captures read in order (matches the fixture server).
+  return results.sort().slice(0, 50);
 }
