@@ -261,6 +261,32 @@ export function planBackfill(opts: {
     return null;
   };
 
+  // Notifications are idempotent (exact toolUseId, latest wins), so unlike prose
+  // they can be healed from ANYWHERE in the transcript, not just the lost tail —
+  // a completion that arrived before the parser existed, or while a server was
+  // down, otherwise leaves its dispatch "running" forever in the Agents panel.
+  // This sweep is the single place notifications are planned.
+  const latestNotification = new Map<string, PlannedEvent>();
+  const noteNotifications = (text: string | null, ts: string, sdkUuid?: string) => {
+    for (const body of parseTaskNotifications(text ?? '')) {
+      if (loggedDispatchUpdates.has(body.toolUseId)) continue;
+      latestNotification.set(body.toolUseId, { body, ts, sdkUuid });
+    }
+  };
+  for (const o of entries) {
+    const ts = typeof o?.timestamp === 'string' ? o.timestamp : new Date().toISOString();
+    if (o?.type === 'user' && !o.isSidechain && !o.isMeta) {
+      noteNotifications(userEntryText(o), ts, o.uuid);
+    } else if (o?.type === 'queue-operation' && typeof o?.content === 'string') {
+      // Real transcripts record notifications as queue-operation metadata lines
+      // ({operation, content}) — often WITHOUT any user entry (verified against
+      // this project's own transcript: 10 queue-op lines, 1 user entry). The
+      // enqueue/dequeue pair repeats each notification; latest-per-id dedupes.
+      noteNotifications(o.content, ts);
+    }
+  }
+  plan.planned.push(...latestNotification.values());
+
   let watermark = -1;
   for (let i = 0; i < entries.length; i++) if (represented(entries[i]) === true) watermark = i;
   if (watermark === -1) {
@@ -353,12 +379,9 @@ export function planBackfill(opts: {
         }
       }
       // User text is never backfilled: deliver() logs it before the CLI ever sees
-      // it, so unmatched user text here is harness-injected, not a loss — EXCEPT
-      // task-notifications (background-agent completions), which only ever arrive
-      // harness-injected and must become dispatch_updates exactly as live does.
-      for (const body of parseTaskNotifications(userEntryText(o) ?? '')) {
-        plan.planned.push({ body, ts, sdkUuid: o.uuid });
-      }
+      // it, so unmatched user text here is harness-injected, not a loss. Task
+      // notifications are handled by the whole-transcript sweep above — the
+      // single place dispatch_updates are planned.
     } else if (o?.type === 'system' && o?.subtype === 'compact_boundary' && unloggedCompacts > 0) {
       plan.planned.push({
         body: { type: 'compaction', preTokens: o.compactMetadata?.preTokens, trigger: o.compactMetadata?.trigger },
