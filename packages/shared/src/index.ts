@@ -42,6 +42,12 @@ export type PanelSpec =
 
 // ---------- Git ----------
 
+/** Live repo state for the shell chrome (top bar): branch + working-tree dirt. */
+export interface GitStatus {
+  branch: string;
+  dirtyFiles: number;
+}
+
 export interface CommitInfo {
   sha: string;
   subject: string;
@@ -109,7 +115,8 @@ export type ClientMessage =
   | { type: 'resolve_thread'; threadId: string }
   | { type: 'withdraw_queued'; queuedId: string }
   | { type: 'interrupt' }
-  | { type: 'compact' };
+  | { type: 'compact' }
+  | { type: 'new_session' };
 
 export interface Snapshot {
   projectName: string;
@@ -121,6 +128,9 @@ export interface Snapshot {
   tasks: TaskItem[];
   commits: CommitInfo[];
   status: AgentStatus;
+  gitStatus?: GitStatus | null;
+  /** Model the agent session runs on (e.g. "claude-fable-5"). */
+  model?: string;
 }
 
 export type ServerMessage =
@@ -128,4 +138,5 @@ export type ServerMessage =
   | { type: 'event'; event: SessionEvent }
   | { type: 'delta'; turnId: string; text: string }
   | { type: 'queue'; items: QueuedItem[] }
-  | { type: 'threads'; threads: Thread[] };
+  | { type: 'threads'; threads: Thread[] }
+  | { type: 'git_status'; status: GitStatus };

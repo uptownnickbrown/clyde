@@ -2,10 +2,10 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { ClientMessage, ServerMessage, SessionEvent, Snapshot } from '@clyde/shared';
+import type { ClientMessage, GitStatus, ServerMessage, SessionEvent, Snapshot } from '@clyde/shared';
 import { AgentSession, type Broadcast } from './agentSession.js';
 import { ClydeStore } from './store.js';
-import { listCommits, showCommit } from './git.js';
+import { listCommits, repoStatus, showCommit } from './git.js';
 import { initLogger, slog, tailLog } from './log.js';
 
 const MIME: Record<string, string> = {
@@ -21,7 +21,7 @@ const MIME: Record<string, string> = {
 
 export async function startServer(projectRoot: string, port: number, freshSession = false) {
   const resumeId = freshSession ? null : ClydeStore.latestSessionId(projectRoot);
-  const store = new ClydeStore(projectRoot, resumeId ?? undefined);
+  let store = new ClydeStore(projectRoot, resumeId ?? undefined);
   initLogger(store.clydeDir);
   slog('server', 'info', 'starting', { projectRoot, port, resumed: resumeId ?? false });
   const clients = new Set<WebSocket>();
@@ -40,9 +40,35 @@ export async function startServer(projectRoot: string, port: number, freshSessio
     threads: (threads) => broadcastAll({ type: 'threads', threads }),
   };
 
-  const session = new AgentSession(store, bus);
+  let session = new AgentSession(store, bus);
   const sdkSessionId = resumeId ? store.findSdkSessionId() : null;
   session.start(sdkSessionId ?? undefined);
+
+  // Branch + working-tree state for the shell chrome; broadcast on change.
+  let gitStatus: GitStatus | null = null;
+  const pollGitStatus = async () => {
+    const s = await repoStatus(projectRoot);
+    if (s && (s.branch !== gitStatus?.branch || s.dirtyFiles !== gitStatus?.dirtyFiles)) {
+      gitStatus = s;
+      broadcastAll({ type: 'git_status', status: s });
+    }
+  };
+  void pollGitStatus();
+  setInterval(() => void pollGitStatus(), 5000);
+
+  const buildSnapshot = async (): Promise<Snapshot> => ({
+    projectName: path.basename(projectRoot),
+    goalMarkdown: store.readGoal(),
+    events: store.loadEvents(),
+    threads: session.threads,
+    queue: session.userQueue,
+    panels: session.panels,
+    tasks: session.tasks,
+    commits: await listCommits(projectRoot),
+    status: session.status,
+    gitStatus,
+    model: session.model,
+  });
 
   const webDist = findWebDist();
 
@@ -127,18 +153,7 @@ export async function startServer(projectRoot: string, port: number, freshSessio
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   wss.on('connection', async (ws) => {
     clients.add(ws);
-    const snapshot: Snapshot = {
-      projectName: path.basename(projectRoot),
-      goalMarkdown: store.readGoal(),
-      events: store.loadEvents(),
-      threads: session.threads,
-      queue: session.userQueue,
-      panels: session.panels,
-      tasks: session.tasks,
-      commits: await listCommits(projectRoot),
-      status: session.status,
-    };
-    send(ws, { type: 'hello', snapshot });
+    send(ws, { type: 'hello', snapshot: await buildSnapshot() });
 
     ws.on('message', (data) => {
       let msg: ClientMessage;
@@ -170,6 +185,19 @@ export async function startServer(projectRoot: string, port: number, freshSessio
         case 'compact':
           session.requestCompact();
           break;
+        case 'new_session': {
+          // Retire the current session in place; the store on disk stays intact
+          // and the fresh session starts with a clean event log + SDK conversation.
+          slog('server', 'info', 'new session requested', { previous: store.sessionId });
+          session.dispose();
+          store = new ClydeStore(projectRoot);
+          session = new AgentSession(store, bus);
+          session.start();
+          void buildSnapshot().then((snapshot) => {
+            for (const c of clients) send(c, { type: 'hello', snapshot });
+          });
+          break;
+        }
       }
     });
     ws.on('close', () => clients.delete(ws));

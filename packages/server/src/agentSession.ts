@@ -86,11 +86,13 @@ export class AgentSession {
   private pendingTaskCreates = new Map<string, string>();
   private pendingCompact = false;
   private costBaseline = 0;
+  private abort = new AbortController();
+  private disposed = false;
 
   constructor(
     readonly store: ClydeStore,
     private bus: Broadcast,
-    private model = process.env.CLYDE_MODEL ?? 'claude-fable-5',
+    readonly model = process.env.CLYDE_MODEL ?? 'claude-fable-5',
   ) {
     this.threads = store.loadThreads();
     this.tasks = store.loadTasks();
@@ -165,6 +167,7 @@ export class AgentSession {
         effort: process.env.CLYDE_EFFORT ?? 'xhigh',
         ...(resumeSdkSessionId ? { resume: resumeSdkSessionId } : {}),
         cwd: this.store.projectRoot,
+        abortController: this.abort,
         permissionMode: 'bypassPermissions',
         includePartialMessages: true,
         systemPrompt: { type: 'preset', preset: 'claude_code', append: CLYDE_PROTOCOL },
@@ -300,6 +303,16 @@ export class AgentSession {
     void this.q?.interrupt().catch(() => {});
   }
 
+  /** Retire this session so a fresh one can take over (the New-session action).
+   *  Aborts the SDK query and stops emitting — the store stays intact on disk. */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    slog('session', 'info', 'session disposed', { sessionId: this.store.sessionId });
+    this.git.stop();
+    this.abort.abort();
+  }
+
   /** User-requested compaction: immediate when idle, deferred to the turn boundary
    *  while working. Silent plumbing — no user_message event; the compact_boundary
    *  divider is the visible confirmation. */
@@ -368,12 +381,15 @@ export class AgentSession {
     if (!this.q) return;
     try {
       for await (const raw of this.q) {
+        if (this.disposed) break;
         this.translate(raw as any);
       }
     } catch (err) {
+      if (this.disposed) return; // aborted on purpose — a fresh session owns the bus now
       slog('session', 'error', 'SDK stream threw', { err: String(err) });
       this.emit({ type: 'error', message: String(err) });
     }
+    if (this.disposed) return;
     slog('session', 'warn', 'SDK stream ended');
     this.setStatus('disconnected');
   }

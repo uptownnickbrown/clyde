@@ -1,8 +1,24 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { CommitInfo } from '@clyde/shared';
+import type { CommitInfo, GitStatus } from '@clyde/shared';
 
 const run = promisify(execFile);
+
+/** Branch + working-tree dirt for the shell chrome. Null outside a git repo. */
+export async function repoStatus(projectRoot: string): Promise<GitStatus | null> {
+  try {
+    const [branch, status] = await Promise.all([
+      run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: projectRoot }),
+      run('git', ['status', '--porcelain'], { cwd: projectRoot }),
+    ]);
+    return {
+      branch: branch.stdout.trim(),
+      dirtyFiles: status.stdout.split('\n').filter(Boolean).length,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export async function listCommits(projectRoot: string, limit = 100): Promise<CommitInfo[]> {
   try {
