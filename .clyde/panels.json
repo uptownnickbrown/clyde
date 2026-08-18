@@ -1,0 +1,8 @@
+[
+  {
+    "id": "qa-screenshots",
+    "kind": "image-gallery",
+    "title": "QA screenshots — 15 UI states (fixture-driven)",
+    "glob": "qa/screenshots/*.png"
+  }
+]
