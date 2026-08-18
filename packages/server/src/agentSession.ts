@@ -39,19 +39,17 @@ project state lives in on-screen panels. Follow these standing orders:
   responsive in the conversation. When delegating a task-list item, put its exact
   subject in the Task description and mark it in_progress — the UI links them.
 - **Mid-turn messages**: when user messages arrive while you are working, answer
-  each one in your very next message — sidebar comments FIRST, each reply beginning
-  with its exact [[sidebar:<id>]] token — with a brief direct answer before
-  continuing the work. Filing a task is in addition to replying, never instead of
+  each one before continuing the work — sidebar comments FIRST, via the
+  reply_in_thread tool. Filing a task is in addition to replying, never instead of
   it. Prefer ending turns at logical checkpoints over marathon turns; queued
   follow-ups deliver in order.
 - **Sidebar replies**: when a user message is marked as a sidebar comment on an
-  earlier excerpt, it includes a token like [[sidebar:ab12cd34]]. Reply directly and
-  self-containedly, beginning every message that belongs to that reply with that
-  exact token on its first line — the UI strips it and renders those messages as a
-  thread attached to the excerpt. You may send several such messages, and multiple
-  sidebars can be in flight at once: the token's id says which thread each message
-  belongs to. Messages without a token go to the main conversation flow; use those
-  to continue main-line work.
+  earlier excerpt, it carries a sidebar id. Reply by CALLING THE reply_in_thread
+  TOOL with that id — immediately, even mid-task; a brief direct answer beats a
+  delayed thorough one, and you can call it again to add more. Multiple sidebars can
+  be in flight at once; the id says which thread each reply belongs to. Never answer
+  a sidebar comment only in main-flow prose — the user is looking at the thread
+  card, and prose elsewhere reads as silence.
 `;
 
 /** Per-thread reply token; the id tells the server which thread to route to. */
@@ -86,6 +84,7 @@ export class AgentSession {
   private git: GitWatcher;
   /** TaskCreate tool_use ids awaiting their result, mapped to provisional task ids. */
   private pendingTaskCreates = new Map<string, string>();
+  private pendingCompact = false;
 
   constructor(
     readonly store: ClydeStore,
@@ -125,6 +124,30 @@ export class AgentSession {
           async (args) => {
             this.upsertPanel(args as { id: string; kind: PanelSpec['kind']; title: string; source: string });
             return { content: [{ type: 'text' as const, text: `Panel "${args.title}" published.` }] };
+          },
+        ),
+        tool(
+          'reply_in_thread',
+          'Reply inside a sidebar thread. This is THE way to answer a sidebar comment — call it immediately when one arrives, even mid-task. The reply renders as a threaded card attached to the quoted excerpt, not in the main conversation.',
+          {
+            thread_id: z
+              .string()
+              .describe('The sidebar id given in the comment (8 chars, e.g. "ab12cd34"), or the full thread id'),
+            text: z.string().describe('Your reply — markdown supported; brief and direct beats delayed and thorough'),
+          },
+          async (args) => {
+            const ok = this.replyInThread(args.thread_id, args.text);
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: ok
+                    ? 'Reply posted to the thread.'
+                    : `No thread matches id "${args.thread_id}" — nothing was posted. Re-check the sidebar id from the comment.`,
+                },
+              ],
+              isError: !ok,
+            };
           },
         ),
       ],
@@ -269,6 +292,23 @@ export class AgentSession {
     void this.q?.interrupt().catch(() => {});
   }
 
+  /** User-requested compaction: immediate when idle, deferred to the turn boundary
+   *  while working. Silent plumbing — no user_message event; the compact_boundary
+   *  divider is the visible confirmation. */
+  requestCompact() {
+    if (this.status === 'working') {
+      slog('session', 'info', 'compact requested — deferred to turn boundary');
+      this.pendingCompact = true;
+      return;
+    }
+    this.sendCompact();
+  }
+
+  private sendCompact() {
+    slog('session', 'info', 'sending /compact');
+    this.pushInput({ type: 'user', message: { role: 'user', content: '/compact' }, parent_tool_use_id: null });
+  }
+
   resolveThread(threadId: string) {
     const thread = this.threads.find((t) => t.id === threadId);
     if (!thread) return;
@@ -278,7 +318,7 @@ export class AgentSession {
     this.enqueue(
       `[Sidebar resolved] The user marked the sidebar thread on «${truncate(thread.anchor.quote, 120)}» as resolved. ` +
         `If it settled or changed a decision, append it to .clyde/DECISIONS.md now; otherwise no action needed. ` +
-        `Reply briefly (begin the reply with ${sidebarToken(thread.id)}), then continue your work.`,
+        `Reply briefly via the reply_in_thread tool (thread_id "${thread.id.slice(0, 8)}"), then continue your work.`,
       { threadId },
     );
   }
@@ -307,12 +347,11 @@ export class AgentSession {
       `The user selected this excerpt from one of your earlier messages:\n` +
       `"""\n${thread.anchor.quote}\n"""\n` +
       `Their comment:\n${item.text}\n\n` +
-      `Respond to this comment directly and self-containedly. Begin every message that belongs to ` +
-      `your reply with the exact token ${sidebarToken(thread.id)} on its first line — those messages render ` +
-      `as a thread attached to the excerpt, not in the main flow, and you may send several. ` +
-      `Messages without the token go to the main conversation. If your reply changes a prior ` +
-      `decision or plan, say so explicitly and record it in .clyde/DECISIONS.md. Afterwards, ` +
-      `continue any in-progress main-line work.`
+      `Reply NOW by calling the reply_in_thread tool with thread_id "${thread.id.slice(0, 8)}". ` +
+      `Answer directly and self-containedly — a brief first reply beats a delayed thorough one, and ` +
+      `you can call the tool again to add more. Do NOT answer only in main-flow prose; the user is ` +
+      `watching the thread card. If your reply changes a prior decision or plan, say so explicitly ` +
+      `and record it in .clyde/DECISIONS.md. Afterwards, continue any in-progress main-line work.`
     );
   }
 
@@ -440,6 +479,10 @@ export class AgentSession {
           this.deliver(next);
         } else {
           this.setStatus('idle');
+          if (this.pendingCompact) {
+            this.pendingCompact = false;
+            this.sendCompact();
+          }
         }
         break;
       }
@@ -493,6 +536,24 @@ export class AgentSession {
       }));
       this.tasksChanged();
     }
+  }
+
+  /** Post an assistant reply into a sidebar thread (the reply_in_thread tool). */
+  private replyInThread(threadRef: string, text: string): boolean {
+    const thread = this.threads.find((t) => t.id === threadRef || t.id.startsWith(threadRef));
+    if (!thread) {
+      slog('session', 'warn', 'reply_in_thread: unknown thread', { threadRef });
+      return false;
+    }
+    slog('session', 'info', 'reply_in_thread posted', { threadId: thread.id });
+    const e = this.emit({
+      type: 'assistant_message',
+      markdown: text,
+      turnId: this.currentDelivery?.turnId ?? 'unattributed',
+      threadId: thread.id,
+    });
+    this.lastAssistantMessageId = e.id;
+    return true;
   }
 
   /** Swap a provisional TaskCreate id for the harness-assigned "#N" from the result. */
