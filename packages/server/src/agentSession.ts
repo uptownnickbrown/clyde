@@ -120,6 +120,9 @@ export class AgentSession {
   private pendingQuestions = new Map<string, { questions: Question[]; resolve: (r: unknown) => void }>();
   private tasksWatcher: fs.FSWatcher | null = null;
   private tasksWatchTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Panel edits awaiting the debounced [Tasks edited] note (human-readable, in order). */
+  private taskEditBuffer: string[] = [];
+  private taskEditTimer: ReturnType<typeof setTimeout> | undefined;
   private needsPrime = false;
   private pendingCompact = false;
   private costBaseline = 0;
@@ -444,6 +447,7 @@ export class AgentSession {
     slog('session', 'info', 'session disposed', { sessionId: this.store.sessionId });
     this.git.stop();
     this.tasksWatcher?.close();
+    clearTimeout(this.taskEditTimer);
     this.pendingQuestions.clear();
     this.abort.abort();
   }
@@ -885,6 +889,46 @@ export class AgentSession {
       task.id = m[1];
       this.tasksChanged();
     }
+  }
+
+  /** A user edit from the Tasks panel (WS edit_task): apply only the provided
+   *  fields, persist + broadcast, and tell the agent — edits within a burst
+   *  debounce into ONE queued note (mirrors the Goal panel's [Goal updated]),
+   *  so direct panel edits never spam the conversation. The tasks.json write
+   *  re-fires the file watcher, whose deep-equal guard no-ops it. */
+  editTask({ taskId, subject, status, detail }: { taskId: string; subject?: string; status?: TaskItem['status']; detail?: string }) {
+    const task = this.tasks.find((t) => t.id === taskId);
+    if (!task) {
+      slog('session', 'warn', 'edit_task: unknown task — ignored', { taskId });
+      return;
+    }
+    const edits: string[] = [];
+    if (subject !== undefined && subject !== task.subject) {
+      task.subject = subject;
+      edits.push(`#${task.id} subject → "${truncate(subject, 80)}"`);
+    }
+    if (status !== undefined && status !== task.status) {
+      task.status = status;
+      edits.push(`#${task.id} status → ${status}`);
+    }
+    if (detail !== undefined && detail !== (task.detail ?? '')) {
+      task.detail = detail || undefined;
+      edits.push(detail ? `#${task.id} detail updated` : `#${task.id} detail cleared`);
+    }
+    if (!edits.length) return;
+    slog('session', 'info', 'task edited from the panel', { taskId, edits });
+    this.tasksChanged();
+    this.taskEditBuffer.push(...edits);
+    clearTimeout(this.taskEditTimer);
+    this.taskEditTimer = setTimeout(() => {
+      if (this.disposed || !this.taskEditBuffer.length) return;
+      const described = this.taskEditBuffer.join('; ');
+      this.taskEditBuffer = [];
+      this.enqueue(
+        `[Tasks edited] The user edited the task list directly: ${described}. ` +
+          `Take these as user intent — adjust your plan if it changes anything.`,
+      );
+    }, 5000);
   }
 
   private tasksChanged() {

@@ -4,35 +4,33 @@ import { Md } from './Md';
 
 // ---------- Left rail ----------
 
-export function TasksPanel({ tasks, delegated }: { tasks: TaskItem[]; delegated?: Set<string> }) {
+const TASK_ICON: Record<TaskItem['status'], string> = { pending: '○', in_progress: '◐', completed: '✓' };
+const TASK_STATUSES: TaskItem['status'][] = ['pending', 'in_progress', 'completed'];
+
+export function TasksPanel({
+  tasks,
+  delegated,
+  send,
+}: {
+  tasks: TaskItem[];
+  delegated?: Set<string>;
+  send: (msg: ClientMessage) => void;
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
-  const icon = { pending: '○', in_progress: '◐', completed: '✓' } as const;
   const inProgress = tasks.filter((t) => t.status === 'in_progress');
   const pending = tasks.filter((t) => t.status === 'pending');
   const completed = tasks.filter((t) => t.status === 'completed');
 
-  const Item = ({ t }: { t: TaskItem }) => (
-    <li
-      className={`task task-${t.status}${openId === t.id ? ' open' : ''}`}
-      onClick={() => setOpenId(openId === t.id ? null : t.id)}
-    >
-      <span className="task-icon">{icon[t.status]}</span>
-      <div className="task-main">
-        <span className="task-subject">
-          {t.status === 'in_progress' ? (t.activeForm ?? t.subject) : t.subject}
-          {delegated?.has(t.subject) && <span className="task-delegated">delegated</span>}
-        </span>
-        {openId === t.id && (
-          <div className="task-detail">
-            {t.detail ?? <span className="empty">no detail recorded</span>}
-            <div className="task-meta">
-              #{t.id} · {t.status.replace('_', ' ')}
-            </div>
-          </div>
-        )}
-      </div>
-    </li>
+  const row = (t: TaskItem) => (
+    <TaskRow
+      key={t.id}
+      t={t}
+      open={openId === t.id}
+      onToggle={() => setOpenId(openId === t.id ? null : t.id)}
+      delegated={delegated?.has(t.subject) ?? false}
+      send={send}
+    />
   );
 
   return (
@@ -41,13 +39,13 @@ export function TasksPanel({ tasks, delegated }: { tasks: TaskItem[]; delegated?
       {inProgress.length > 0 && (
         <>
           <div className="group-label">In progress</div>
-          <ul className="tasks">{inProgress.map((t) => <Item key={t.id} t={t} />)}</ul>
+          <ul className="tasks">{inProgress.map(row)}</ul>
         </>
       )}
       {pending.length > 0 && (
         <>
           <div className="group-label">Up next</div>
-          <ul className="tasks">{pending.map((t) => <Item key={t.id} t={t} />)}</ul>
+          <ul className="tasks">{pending.map(row)}</ul>
         </>
       )}
       {completed.length > 0 && (
@@ -55,10 +53,126 @@ export function TasksPanel({ tasks, delegated }: { tasks: TaskItem[]; delegated?
           <button className="group-toggle" onClick={() => setShowDone(!showDone)}>
             {showDone ? '▾' : '▸'} {completed.length} completed
           </button>
-          {showDone && <ul className="tasks">{completed.map((t) => <Item key={t.id} t={t} />)}</ul>}
+          {showDone && <ul className="tasks">{completed.map(row)}</ul>}
         </>
       )}
     </div>
+  );
+}
+
+/** One task row; expanded cards grow an edit-in-place form (subject / detail /
+ *  status). Save sends a single edit_task carrying only the changed fields —
+ *  nothing changed, nothing sent. A top-level component (not inline in
+ *  TasksPanel) so the form's state and focus survive parent re-renders. */
+function TaskRow({
+  t,
+  open,
+  onToggle,
+  delegated,
+  send,
+}: {
+  t: TaskItem;
+  open: boolean;
+  onToggle: () => void;
+  delegated: boolean;
+  send: (msg: ClientMessage) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [subject, setSubject] = useState('');
+  const [status, setStatus] = useState<TaskItem['status']>(t.status);
+  const [detail, setDetail] = useState('');
+  useEffect(() => {
+    if (!open) setEditing(false); // collapse discards the draft
+  }, [open]);
+
+  const startEdit = () => {
+    setSubject(t.subject);
+    setStatus(t.status);
+    setDetail(t.detail ?? '');
+    setEditing(true);
+  };
+  const save = () => {
+    const msg: Extract<ClientMessage, { type: 'edit_task' }> = { type: 'edit_task', taskId: t.id };
+    const trimmed = subject.trim();
+    if (trimmed && trimmed !== t.subject) msg.subject = trimmed;
+    if (status !== t.status) msg.status = status;
+    if (detail !== (t.detail ?? '')) msg.detail = detail;
+    if (msg.subject !== undefined || msg.status !== undefined || msg.detail !== undefined) send(msg);
+    setEditing(false);
+  };
+
+  // Forward-tolerant: a status outside the editable set (e.g. from a newer
+  // server) still renders as the select's current value.
+  const statuses = TASK_STATUSES.includes(t.status) ? TASK_STATUSES : [t.status, ...TASK_STATUSES];
+  return (
+    <li className={`task task-${t.status}${open ? ' open' : ''}`} onClick={onToggle}>
+      <span className="task-icon">{TASK_ICON[t.status] ?? '○'}</span>
+      <div className="task-main">
+        <span className="task-subject">
+          {t.status === 'in_progress' ? (t.activeForm ?? t.subject) : t.subject}
+          {delegated && <span className="task-delegated">delegated</span>}
+        </span>
+        {open && !editing && (
+          <div className="task-detail">
+            {t.detail ?? <span className="empty">no detail recorded</span>}
+            <div className="task-meta">
+              #{t.id} · {t.status.replace('_', ' ')}
+              <button
+                className="linklike task-edit-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startEdit();
+                }}
+              >
+                ✎ edit
+              </button>
+            </div>
+          </div>
+        )}
+        {open && editing && (
+          <div
+            className="task-edit"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                setEditing(false);
+              }
+            }}
+          >
+            <input
+              autoFocus
+              value={subject}
+              spellCheck={false}
+              onChange={(e) => setSubject(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') save();
+              }}
+            />
+            <textarea
+              rows={5}
+              value={detail}
+              placeholder="detail"
+              spellCheck={false}
+              onChange={(e) => setDetail(e.target.value)}
+            />
+            <div className="task-edit-row">
+              <select value={status} onChange={(e) => setStatus(e.target.value as TaskItem['status'])}>
+                {statuses.map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace('_', ' ')}
+                  </option>
+                ))}
+              </select>
+              <button className="primary" onClick={save}>
+                Save
+              </button>
+              <button onClick={() => setEditing(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </li>
   );
 }
 
