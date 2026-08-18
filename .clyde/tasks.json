@@ -95,5 +95,11 @@
     "subject": "UI/UX redesign wave against the Design Vision references",
     "status": "pending",
     "detail": "Read \"Clyde UI — Design Vision.md\" + .png (committed at repo root), diff the vision against the current UI using the 15-state QA capture set, propose a gap list ordered by impact, then implement with screenshot verification per state."
+  },
+  {
+    "id": "17",
+    "subject": "Backfill event-log holes after restarts (lost turn tails)",
+    "status": "pending",
+    "detail": "A restart can kill the server before it consumes the tail of the SDK stream: the agent's last messages/tool calls execute but never reach events.jsonl, leaving a hole in the document (observed: a sidebar reply + TaskCreate #16 vanished; user saw it stream live, then it disappeared on reload). Fix: on resume boot, read the SDK's own session transcript (~/.claude/projects/<hash>/<sessionId>.jsonl), find messages after the last logged event, and translate+append them before starting the new query. Also: sequence intentional restarts (like the tasks.json reload touch) behind stream quiescence."
   }
 ]
