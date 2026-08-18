@@ -174,4 +174,6 @@ export type ServerMessage =
   | { type: 'delta'; turnId: string; text: string }
   | { type: 'queue'; items: QueuedItem[] }
   | { type: 'threads'; threads: Thread[] }
-  | { type: 'git_status'; status: GitStatus };
+  | { type: 'git_status'; status: GitStatus }
+  /** SCOPE.md changed on disk (the user saved it from the Goal panel). */
+  | { type: 'goal'; markdown: string };

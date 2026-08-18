@@ -177,11 +177,71 @@ function CommitDetail({ commit }: { commit: CommitInfo }) {
   );
 }
 
-// ---------- Right rail ----------
-
+/** The scope doc, readable and editable in place. Save writes SCOPE.md through
+ *  the server (POST /api/goal), which broadcasts the fresh text to every client
+ *  and hands the agent a user note to re-read it. Last-write-wins (v1). */
 export function GoalPanel({ markdown }: { markdown: string | null }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startEdit = () => {
+    setDraft(markdown ?? '');
+    setError(null);
+    setEditing(true);
+  };
+  const cancel = () => setEditing(false);
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/goal', {
+        method: 'POST',
+        headers: { 'content-type': 'text/markdown' },
+        body: draft,
+      });
+      if (!r.ok) throw new Error(`save failed (${r.status})`);
+      setEditing(false); // the server's `goal` broadcast refreshes the rendered view
+    } catch (err) {
+      setError(String(err));
+    }
+    setSaving(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="goal-panel goal-edit">
+        <textarea
+          autoFocus
+          spellCheck={false}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') cancel();
+          }}
+        />
+        <div className="goal-edit-actions">
+          <button className="primary" disabled={saving} onClick={() => void save()}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button disabled={saving} onClick={cancel}>
+            Cancel
+          </button>
+          <span className={`goal-edit-note${error ? ' goal-edit-error' : ''}`}>
+            {error ?? 'Saving notifies Clyde to re-read the goal'}
+          </span>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="goal-panel">
+      <div className="goal-actions">
+        <button className="linklike goal-edit-btn" onClick={startEdit}>
+          ✎ Edit
+        </button>
+      </div>
       {markdown ? <Md>{markdown}</Md> : <div className="empty">No SCOPE.md found in project root.</div>}
     </div>
   );

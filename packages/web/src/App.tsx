@@ -20,9 +20,13 @@ import {
 } from './components/Sidebars';
 
 // Shell layout (Design Vision): stable top bar · icon rail · one capability panel ·
-// conversation center · contextual right workbench. Panels resize and remember.
+// conversation center · right workbench. The workbench is the attention surface
+// (DECISIONS 2026-08-18): it carries structured interaction that needs the user's
+// eyes now — Questions today, review ceremonies and live exhibits soon. Durable
+// reference state (Goal, Artifacts) lives in the left rail. One tab for now; the
+// tab bar stays because more attention tenants are coming (no placeholder tabs).
 
-type WbTab = 'questions' | 'goal' | 'panels';
+type WbTab = 'questions';
 
 const store = {
   get: (k: string, fallback: string) => localStorage.getItem(k) ?? fallback,
@@ -36,7 +40,12 @@ export default function App() {
   const [leftW, setLeftW] = useState(() => Number(store.get('clyde.leftW', '300')) || 300);
   const [rightOpen, setRightOpen] = useState(() => store.get('clyde.rightOpen', '1') === '1');
   const [rightW, setRightW] = useState(() => Number(store.get('clyde.rightW', '340')) || 340);
-  const [wbTab, setWbTab] = useState<WbTab>(() => store.get('clyde.wbTab', 'goal') as WbTab);
+  const [wbTab, setWbTab] = useState<WbTab>(() => {
+    // Migration: 'goal'/'panels' moved to the left rail as capabilities — any
+    // stored workbench default falls back to the one remaining tab.
+    if (store.get('clyde.wbTab', 'questions') !== 'questions') store.set('clyde.wbTab', 'questions');
+    return 'questions';
+  });
 
   const drag = (apply: (clientX: number) => void) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -95,6 +104,21 @@ export default function App() {
     setRightOpen(true);
   }, [pendingQuestionId]);
 
+  // Artifacts attention: amber count of panels_updated events the user hasn't
+  // looked at. In-memory only — baselined at the first snapshot (history never
+  // badges; the full log replays on every hello, so the baseline survives
+  // reconnects), re-baselined when the log shrinks (new session), cleared while
+  // the artifacts capability is open.
+  const panelUpdates = useMemo(() => state.events.filter((e) => e.type === 'panels_updated').length, [state.events]);
+  const [panelUpdatesSeen, setPanelUpdatesSeen] = useState<number | null>(null);
+  useEffect(() => {
+    if (!state.connected) return;
+    if (panelUpdatesSeen === null || panelUpdates < panelUpdatesSeen || (leftOpen && capability === 'artifacts')) {
+      setPanelUpdatesSeen(panelUpdates);
+    }
+  }, [state.connected, panelUpdates, panelUpdatesSeen, leftOpen, capability]);
+  const artifactsNew = panelUpdatesSeen === null ? 0 : Math.max(0, panelUpdates - panelUpdatesSeen);
+
   return (
     <div className="app">
       <TopBar
@@ -115,6 +139,7 @@ export default function App() {
             tasksInProgress: state.tasks.filter((t) => t.status === 'in_progress').length,
             agentsRunning,
             dirtyFiles: state.gitStatus?.dirtyFiles ?? 0,
+            artifactsNew,
           }}
           onSelect={selectCapability}
         />
@@ -124,10 +149,12 @@ export default function App() {
             <aside className="left-panel" style={{ width: leftW }}>
               <header className="panel-head">{capabilityLabel(capability)}</header>
               <div className="panel-scroll">
+                {capability === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
                 {capability === 'tasks' && <TasksPanel tasks={state.tasks} delegated={delegated} />}
                 {capability === 'git' && <GitPanel commits={state.commits} />}
                 {capability === 'decisions' && <DecisionsPanel />}
                 {capability === 'reviews' && <ReviewsPanel />}
+                {capability === 'artifacts' && <PushedPanels panels={state.panels} />}
                 {capability === 'agents' && <AgentsPanel events={state.events} />}
                 {capability === 'activity' && <ActivityPanel events={state.events} />}
                 {capability === 'context' && (
@@ -163,7 +190,7 @@ export default function App() {
             <div className="resizer" onMouseDown={dragRight} title="Drag to resize" />
             <aside className="right-panel" style={{ width: rightW }}>
               <nav className="wb-tabs">
-                {(['questions', 'goal', 'panels'] as WbTab[]).map((t) => (
+                {(['questions'] as WbTab[]).map((t) => (
                   <button
                     key={t}
                     className={wbTab === t ? 'active' : ''}
@@ -172,8 +199,8 @@ export default function App() {
                       store.set('clyde.wbTab', t);
                     }}
                   >
-                    {t === 'questions' ? 'Questions' : t === 'goal' ? 'Goal' : 'Panels'}
-                    {t === 'questions' && questions.pending && <span className="wb-attn" />}
+                    Questions
+                    {questions.pending && <span className="wb-attn" />}
                   </button>
                 ))}
                 <button
@@ -189,8 +216,6 @@ export default function App() {
               </nav>
               <div className="panel-scroll">
                 {wbTab === 'questions' && <QuestionsPanel events={state.events} send={send} />}
-                {wbTab === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
-                {wbTab === 'panels' && <PushedPanels panels={state.panels} />}
               </div>
             </aside>
           </>

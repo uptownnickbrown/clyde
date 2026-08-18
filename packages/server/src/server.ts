@@ -110,6 +110,34 @@ export async function startServer(projectRoot: string, port: number, freshSessio
       return;
     }
 
+    // Goal edits from the workbench: write SCOPE.md, broadcast the fresh text to
+    // every client, and hand the agent a visible user note so it re-orients.
+    // Last-write-wins by design (v1) — no conflict detection.
+    if (url.pathname === '/api/goal' && req.method === 'POST') {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      req.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > 2_000_000) req.destroy();
+        else chunks.push(c);
+      });
+      req.on('end', () => {
+        const markdown = Buffer.concat(chunks).toString('utf8');
+        const before = store.readGoal() ?? '';
+        fs.writeFileSync(path.join(projectRoot, 'SCOPE.md'), markdown);
+        broadcastAll({ type: 'goal', markdown });
+        const summary = lineDiffSummary(before, markdown);
+        slog('server', 'info', 'goal saved from workbench', { bytes: markdown.length, summary });
+        session.enqueue(
+          `[Goal updated] The user edited SCOPE.md in the workbench. Re-read it before your next unit of work. ` +
+            `Change size: ${summary}.`,
+        );
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      });
+      return;
+    }
+
     if (url.pathname === '/api/logs') {
       const n = Math.min(Number(url.searchParams.get('tail') ?? 200) || 200, 2000);
       res.writeHead(200, { 'content-type': 'text/plain' });
@@ -227,6 +255,23 @@ function findWebDist(): string | null {
     if (fs.existsSync(path.join(candidate, 'index.html'))) return candidate;
   }
   return null;
+}
+
+/** Tiny order-insensitive line diff — "+N/-M lines" for the goal-updated note.
+ *  A multiset comparison, not an LCS: lines present in the new text but not the
+ *  old count as added, and vice versa. Compact and honest enough for a summary. */
+function lineDiffSummary(before: string, after: string): string {
+  const counts = new Map<string, number>();
+  for (const line of before.split('\n')) counts.set(line, (counts.get(line) ?? 0) + 1);
+  let added = 0;
+  for (const line of after.split('\n')) {
+    const n = counts.get(line) ?? 0;
+    if (n > 0) counts.set(line, n - 1);
+    else added++;
+  }
+  let removed = 0;
+  for (const n of counts.values()) removed += n;
+  return `+${added}/-${removed} lines`;
 }
 
 /** Minimal glob: supports "dir/**" + "*.ext" patterns well enough for QA galleries. */
