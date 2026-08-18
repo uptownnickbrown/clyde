@@ -31,6 +31,11 @@ project state lives in on-screen panels. Follow these standing orders:
 - **QA panels**: when you produce visual QA artifacts (screenshots, plots, reports,
   metrics), publish them to the UI with the push_panel tool so the user can judge
   them without digging through files.
+- **Delegate aggressively**: hand substantial, well-scoped implementation work to
+  subagents via the Task tool while you coordinate, review their output, and stay
+  responsive in the conversation. User messages can arrive mid-turn — address them
+  promptly even while delegated work is in flight; never let a long build block
+  the dialogue.
 - **Sidebar replies**: when a user message is marked as a sidebar comment on an
   earlier excerpt, it includes a token like [[sidebar:ab12cd34]]. Reply directly and
   self-containedly, beginning every message that belongs to that reply with that
@@ -80,6 +85,7 @@ export class AgentSession {
     this.threads = store.loadThreads();
     this.tasks = store.loadTasks();
     this.panels = store.loadPanels();
+    this.userQueue = store.loadQueue();
     this.git = new GitWatcher(store.projectRoot, (commit) => {
       commit.messageId = this.lastAssistantMessageId ?? undefined;
       slog('git', 'info', 'new commit', { sha: commit.sha.slice(0, 7), subject: commit.subject });
@@ -156,8 +162,13 @@ export class AgentSession {
       queuedAt: new Date().toISOString(),
     };
     if (this.status === 'working' && !item.urgent) {
+      if (process.env.CLYDE_STEERING !== '0') {
+        this.deliverMidTurn(item);
+        return;
+      }
       slog('session', 'info', 'queued (agent working)', { queueLen: this.userQueue.length + 1, threadId: item.threadId });
       this.userQueue.push(item);
+      this.store.saveQueue(this.userQueue);
       this.bus.queue(this.userQueue);
       return;
     }
@@ -170,7 +181,17 @@ export class AgentSession {
 
   withdraw(queuedId: string) {
     this.userQueue = this.userQueue.filter((i) => i.id !== queuedId);
+    this.store.saveQueue(this.userQueue);
     this.bus.queue(this.userQueue);
+  }
+
+  /** Steering: push into the in-flight turn — the harness surfaces it to the model
+   *  alongside its next tool result, so answers don't wait for the turn boundary. */
+  private deliverMidTurn(item: QueuedItem) {
+    slog('session', 'info', 'steering: delivered mid-turn', { threadId: item.threadId });
+    this.emit({ type: 'user_message', text: item.text, threadId: item.threadId });
+    const content = item.threadId ? this.composeThreadMessage(item) : item.text;
+    this.pushInput({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null });
   }
 
   interrupt() {
@@ -343,6 +364,7 @@ export class AgentSession {
         void this.git.poll();
         const next = this.userQueue.shift();
         if (next) {
+          this.store.saveQueue(this.userQueue);
           this.bus.queue(this.userQueue);
           this.deliver(next);
         } else {

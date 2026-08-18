@@ -9,3 +9,6 @@ The distilled rulings from resolved discussions. The argument may compact away; 
 - Decided: steering is queue-at-turn-boundary with a per-item urgent interrupt — because auto mode must not be blocked, but the user keeps an emergency brake (2026-08-18)
 - Decided: context v1 is visualize + re-inject only; true eviction is a v2 spike — because transcript-rewrite forking is the riskiest unknown and shouldn't gate the POC (2026-08-18)
 - Decided: first mission is Clyde building Clyde, with Playwright screenshot QA pushed to a gallery panel — because the dogfood loop is the fastest way to hit every UX pain (2026-08-18)
+- Decided: reviews are a first-class noun — batch feedback lives in .clyde/reviews/*.md checklists, triaged item-by-item (accept-as-task / fix+sha / push-back), rendered as a burn-down panel — because testing waves are how the user actually steers QA (2026-08-18)
+- Decided: commit expansion stays v1-simple — an expandable card fed by GET /api/commit (git show --stat --patch); GitHub diff deep-links wait for push/remote awareness (2026-08-18)
+- Decided: non-urgent messages now steer mid-turn by default (CLYDE_STEERING=0 reverts) — supersedes the queue-at-turn-boundary ruling above, because questions stuck behind long working turns broke conversational flow; the urgent interrupt is unchanged (2026-08-18)

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { SessionEvent, SessionEventBody, Thread, TaskItem, PanelSpec } from '@clyde/shared';
+import type { SessionEvent, SessionEventBody, Thread, TaskItem, PanelSpec, QueuedItem } from '@clyde/shared';
 
 /** All Clyde state lives as plain files under <project>/.clyde/ — committed with
  *  the work, readable and writable by the agent, watched by the UI. */
@@ -56,6 +56,14 @@ export class ClydeStore {
       .split('\n')
       .filter(Boolean)
       .map((line) => JSON.parse(line) as SessionEvent);
+  }
+
+  loadQueue(): QueuedItem[] {
+    return this.readJson<QueuedItem[]>(path.join(this.sessionDir, 'queue.json')) ?? [];
+  }
+
+  saveQueue(items: QueuedItem[]) {
+    fs.writeFileSync(path.join(this.sessionDir, 'queue.json'), JSON.stringify(items, null, 2));
   }
 
   loadThreads(): Thread[] {
