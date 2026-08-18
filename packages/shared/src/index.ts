@@ -30,10 +30,21 @@ export interface Thread {
 export interface TaskItem {
   id: string;
   subject: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  /** 'declined' is a terminal state from the review-intake ceremony: the user chose
+   *  not to do this item; declineReason says why. Declined items stay on the books
+   *  so review burn-downs count them and nothing is silently dropped. */
+  status: 'pending' | 'in_progress' | 'completed' | 'declined';
   detail?: string;
   /** Present-continuous label shown while in_progress ("Building the QA harness"). */
   activeForm?: string;
+  /** Review-intake provenance: the review file (basename under .clyde/reviews/)
+   *  and the distilled item number that produced this task. */
+  source?: { review: string; item: number };
+  /** Intake batch id (the review file's basename without .md) — the Reviews panel
+   *  renders a burn-down per batch. */
+  batch?: string;
+  /** Why the user declined this item (status 'declined'). */
+  declineReason?: string;
 }
 
 // ---------- Questions (AskUserQuestion interception) ----------
@@ -91,7 +102,15 @@ export interface CommitInfo {
 
 export type SessionEventBody =
   | { type: 'session_started'; sdkSessionId?: string; model: string; cwd: string }
-  | { type: 'user_message'; text: string; threadId?: string; attachments?: string[] }
+  | {
+      type: 'user_message';
+      text: string;
+      threadId?: string;
+      attachments?: string[];
+      /** Set when this message was a review-intake dump: the batch id whose raw
+       *  text was saved verbatim under .clyde/reviews/. The document badges it. */
+      reviewBatch?: string;
+    }
   | {
       type: 'assistant_message';
       markdown: string;
@@ -161,6 +180,9 @@ export interface QueuedItem {
   newThreadAnchor?: ThreadAnchor;
   /** Project-root-relative paths of uploaded files (see POST /api/upload). */
   attachments?: string[];
+  /** Review-intake batch id: the dump was saved verbatim at enqueue time (so it
+   *  survives restarts) and delivery injects the ceremony instructions. */
+  reviewBatch?: string;
   urgent: boolean;
   queuedAt: string;
 }
@@ -168,7 +190,15 @@ export interface QueuedItem {
 // ---------- WebSocket protocol ----------
 
 export type ClientMessage =
-  | { type: 'send_message'; text: string; urgent?: boolean; attachments?: string[] }
+  | {
+      type: 'send_message';
+      text: string;
+      urgent?: boolean;
+      attachments?: string[];
+      /** Review-intake mode: save the dump verbatim as a review batch and run the
+       *  intake ceremony (distill → clarify → confirm → tasks with provenance). */
+      reviewIntake?: boolean;
+    }
   | { type: 'create_thread'; anchor: ThreadAnchor; text: string; urgent?: boolean }
   | { type: 'thread_reply'; threadId: string; text: string; urgent?: boolean }
   | { type: 'resolve_thread'; threadId: string }

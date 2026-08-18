@@ -65,6 +65,16 @@ try {
   await shot('02c-model-picker');
   await page.locator('.model-pop-backdrop').click();
 
+  // 2d — review-intake mode armed: amber banner + placeholder, dump in progress
+  await page.locator('.review-toggle').click();
+  await page.waitForSelector('.review-banner');
+  await page
+    .locator('.composer textarea')
+    .fill('The tasks panel needs drag-reorder; commit dividers should show the branch; and the context gauge is too subtle when it passes 80%.');
+  await shot('02d-review-mode');
+  await page.locator('.review-banner button').click();
+  await page.locator('.composer textarea').fill('');
+
   // 2b — composer attachment chips: file via the (hidden) picker input + text alongside
   await page.setInputFiles('.composer input[type="file"]', path.join(HERE, 'fixtures/attachment-sample.png'));
   await page.waitForSelector('.attachment img');

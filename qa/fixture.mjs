@@ -119,6 +119,12 @@ export function buildSnapshot(projectRoot) {
     },
     { id: 'e-cmp', ts: T(13), type: 'compaction', preTokens: 214000, trigger: 'auto' },
     { id: 'e-use2', ts: T(13), type: 'usage', contextTokens: 96000, costUsd: 4.18 },
+    // Review-intake dump: saved verbatim as a batch; its distilled items are the
+    // batch-tagged tasks below (the Reviews panel renders the burn-down from them).
+    {
+      id: 'u-rev', ts: T(13), type: 'user_message', reviewBatch: '2026-08-18-polish-pass',
+      text: 'Feedback dump from this morning: the composer send button is way too small on narrow widths; git panel relative times drift until you refresh; maybe rename Activity to Telemetry?; and the queue chips need to say they deliver verbatim.',
+    },
     { id: 'a4', ts: T(14), type: 'assistant_message', turnId: 't4', markdown: A4 },
   ];
 
@@ -160,6 +166,11 @@ export function buildSnapshot(projectRoot) {
       { id: '2', subject: 'Conversation document with span comments', status: 'completed' },
       { id: '3', subject: 'Playwright screenshot QA harness', status: 'in_progress', activeForm: 'Building the QA harness', detail: 'qa/fixture-server.mjs serves the built UI over a canned snapshot; qa/screenshot.mjs captures every state at 1440x900@2x into qa/screenshots/.' },
       { id: '4', subject: 'Context meter: pull-back-in affordance', status: 'pending', detail: 'Files-touched list with a per-file re-read action so stale context can be pulled back in after compaction.' },
+      // Intake batch: distilled from the 2026-08-18-polish-pass review dump.
+      { id: '5', subject: 'Composer send button too small on narrow widths', status: 'completed', batch: '2026-08-18-polish-pass', source: { review: '2026-08-18-polish-pass.md', item: 1 } },
+      { id: '6', subject: 'Git panel relative times drift without refresh', status: 'in_progress', activeForm: 'Refreshing git panel times live', batch: '2026-08-18-polish-pass', source: { review: '2026-08-18-polish-pass.md', item: 2 } },
+      { id: '7', subject: 'Rename Activity to Telemetry', status: 'declined', declineReason: 'Activity matches the design-vision vocabulary', batch: '2026-08-18-polish-pass', source: { review: '2026-08-18-polish-pass.md', item: 3 } },
+      { id: '8', subject: 'Queue chips: say they deliver verbatim', status: 'pending', batch: '2026-08-18-polish-pass', source: { review: '2026-08-18-polish-pass.md', item: 4 } },
     ],
     commits: [
       { sha: '1931addf00aa', subject: 'Default agent effort to xhigh (CLYDE_EFFORT to override)', ts: T(13), filesChanged: 1, insertions: 2, deletions: 1, messageId: 'a3' },

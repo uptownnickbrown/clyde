@@ -160,6 +160,33 @@ export class ClydeStore {
     return fs.existsSync(goalPath) ? fs.readFileSync(goalPath, 'utf8') : null;
   }
 
+  /** Save a review-intake dump verbatim as provenance. Returns the batch id
+   *  (filename without .md); the file is never edited by the UI — the agent
+   *  appends an "## Intake result" section after the ceremony. */
+  saveReviewDump(text: string): string {
+    const dir = path.join(this.clydeDir, 'reviews');
+    fs.mkdirSync(dir, { recursive: true });
+    const date = new Date().toISOString().slice(0, 10);
+    const slug =
+      text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, ' ')
+        .trim()
+        .split(/\s+/)
+        .slice(0, 4)
+        .join('-') || 'review';
+    let batch = `${date}-${slug}`;
+    for (let n = 2; fs.existsSync(path.join(dir, `${batch}.md`)); n++) batch = `${date}-${slug}-${n}`;
+    const header =
+      `# Review intake — ${batch}\n\n` +
+      `Raw dump from the composer's Review mode, saved verbatim as provenance.\n` +
+      `Triage lives in Tasks (source/batch fields); the Reviews panel renders the\n` +
+      `burn-down. The agent appends an "## Intake result" section after the ceremony.\n\n` +
+      `## Raw dump\n\n`;
+    fs.writeFileSync(path.join(dir, `${batch}.md`), header + text + '\n');
+    return batch;
+  }
+
   private readJson<T>(p: string): T | null {
     try {
       return JSON.parse(fs.readFileSync(p, 'utf8')) as T;

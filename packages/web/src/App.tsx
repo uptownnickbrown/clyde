@@ -231,7 +231,7 @@ export default function App() {
                 {capability === 'tasks' && <TasksPanel tasks={state.tasks} delegated={delegated} send={send} />}
                 {capability === 'git' && <GitPanel commits={state.commits} />}
                 {capability === 'decisions' && <DecisionsPanel />}
-                {capability === 'reviews' && <ReviewsPanel />}
+                {capability === 'reviews' && <ReviewsPanel tasks={state.tasks} />}
                 {capability === 'artifacts' && <PushedPanels panels={state.panels} />}
                 {capability === 'agents' && <AgentsPanel events={state.events} />}
                 {capability === 'activity' && <ActivityPanel events={state.events} />}

@@ -35,6 +35,10 @@ Select any span of any agent message — today's or from hours ago — and start
 
 Composer semantics are Slack's everywhere: **Enter** sends, **Shift+Enter** newlines. While the agent is working, messages steer it **mid-turn** by default; **Stop & send** is the emergency brake that interrupts in-flight work. Queued items deliver strictly in order and survive restarts.
 
+## Blab your feedback, get a checklist
+
+Hit **☰ Review** in the composer and dump everything — every nitpick from a testing session, in one unstructured message. The raw dump is saved verbatim under `.clyde/reviews/` as provenance, then the agent runs the intake ceremony: distill to numbered items → clarify the ambiguous ones (one question card) → confirm scope (one multi-select card — unchecked means declined, with reasons) → every item becomes a **Task** carrying its batch and item provenance. The Reviews panel renders each batch as a burn-down where a reasoned "no" counts as settled, and nothing is ever silently dropped.
+
 ## Resolved arguments become decisions
 
 When a discussion settles, the ruling is distilled into `.clyde/DECISIONS.md` — and the **Decisions** panel renders the ledger as cards. The argument may compact away; the ruling survives, in the agent's context and on your screen.
@@ -61,7 +65,7 @@ All state lives in plain files under `.clyde/`, committed with the work (machine
 | --- | --- |
 | `.clyde/tasks.json` | The live task list (mirrors the agent's task tools) |
 | `.clyde/DECISIONS.md` | The decision ledger — one ruling per line, never re-litigated silently |
-| `.clyde/reviews/*.md` | Batch-feedback reviews with burn-down tracking |
+| `.clyde/reviews/*.md` | Verbatim review-intake dumps (provenance; burn-down lives in Tasks) |
 | `.clyde/panels.json` | Agent-pushed panels |
 | `.clyde/sessions/<id>/` | Per-session event log, threads, queue (gitignored) |
 | `.clyde/logs/server.jsonl` | Structured server diagnostics (gitignored; also `GET /api/logs`) |

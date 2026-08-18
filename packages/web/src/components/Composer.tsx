@@ -116,6 +116,7 @@ export function Composer({
   const [text, setText] = useState('');
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [review, setReview] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null);
   const working = status === 'working';
@@ -143,15 +144,17 @@ export function Composer({
       text: text.trim() || '(see attached files)',
       urgent,
       attachments: ready.length ? ready.map((f) => f.path) : undefined,
+      reviewIntake: review || undefined,
     });
     setText('');
     setFiles([]);
+    setReview(false);
     if (taRef.current) taRef.current.style.height = '';
   };
 
   return (
     <div
-      className={`composer${dragging ? ' dragging' : ''}`}
+      className={`composer${dragging ? ' dragging' : ''}${review ? ' review-armed' : ''}`}
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);
@@ -163,6 +166,17 @@ export function Composer({
         if (e.dataTransfer.files.length) upload(e.dataTransfer.files);
       }}
     >
+      {review && (
+        <div className="review-banner">
+          <span>
+            <strong>Review intake</strong> — this whole message is saved verbatim as one batch; Clyde
+            distills it into numbered items and confirms before filing tasks.
+          </span>
+          <button title="Leave review mode" onClick={() => setReview(false)}>
+            ✕
+          </button>
+        </div>
+      )}
       {queue.length > 0 && (
         <div className="queue">
           {queue.map((q) => (
@@ -180,7 +194,13 @@ export function Composer({
       <textarea
         ref={taRef}
         value={text}
-        placeholder={working ? 'Message Clyde — delivered mid-turn…' : 'Message Clyde…'}
+        placeholder={
+          review
+            ? 'Dump all your feedback — every point, big or small, in one go…'
+            : working
+              ? 'Message Clyde — delivered mid-turn…'
+              : 'Message Clyde…'
+        }
         onChange={(e) => {
           setText(e.target.value);
           e.target.style.height = 'auto';
@@ -232,6 +252,13 @@ export function Composer({
               e.target.value = '';
             }}
           />
+          <button
+            className={`review-toggle${review ? ' armed' : ''}`}
+            title={review ? 'Leave review mode' : 'Start a review: dump batch feedback, get a distilled checklist to confirm'}
+            onClick={() => setReview(!review)}
+          >
+            ☰ Review
+          </button>
           {model && (
             <ModelPicker model={model} effort={effort} busy={working || status === 'awaiting_input'} send={send} />
           )}

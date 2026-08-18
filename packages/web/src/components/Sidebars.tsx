@@ -4,7 +4,8 @@ import { Md } from './Md';
 
 // ---------- Left rail ----------
 
-const TASK_ICON: Record<TaskItem['status'], string> = { pending: '○', in_progress: '◐', completed: '✓' };
+const TASK_ICON: Record<TaskItem['status'], string> = { pending: '○', in_progress: '◐', completed: '✓', declined: '✗' };
+/** Statuses the edit form offers; 'declined' is ceremony-only (needs a reason). */
 const TASK_STATUSES: TaskItem['status'][] = ['pending', 'in_progress', 'completed'];
 
 export function TasksPanel({
@@ -20,7 +21,9 @@ export function TasksPanel({
   const [showDone, setShowDone] = useState(false);
   const inProgress = tasks.filter((t) => t.status === 'in_progress');
   const pending = tasks.filter((t) => t.status === 'pending');
-  const completed = tasks.filter((t) => t.status === 'completed');
+  // Closed = completed + declined; declined items stay on the books (review provenance).
+  const completed = tasks.filter((t) => t.status === 'completed' || t.status === 'declined');
+  const declinedCount = tasks.filter((t) => t.status === 'declined').length;
 
   const row = (t: TaskItem) => (
     <TaskRow
@@ -51,7 +54,8 @@ export function TasksPanel({
       {completed.length > 0 && (
         <>
           <button className="group-toggle" onClick={() => setShowDone(!showDone)}>
-            {showDone ? '▾' : '▸'} {completed.length} completed
+            {showDone ? '▾' : '▸'} {completed.length - declinedCount} completed
+            {declinedCount > 0 && ` · ${declinedCount} declined`}
           </button>
           {showDone && <ul className="tasks">{completed.map(row)}</ul>}
         </>
@@ -114,9 +118,13 @@ function TaskRow({
         </span>
         {open && !editing && (
           <div className="task-detail">
+            {t.status === 'declined' && (
+              <div className="task-declined-reason">declined — {t.declineReason ?? 'no reason recorded'}</div>
+            )}
             {t.detail ?? <span className="empty">no detail recorded</span>}
             <div className="task-meta">
               #{t.id} · {t.status.replace('_', ' ')}
+              {t.source && ` · from ${t.source.review} item ${t.source.item}`}
               <button
                 className="linklike task-edit-btn"
                 onClick={(e) => {
@@ -612,7 +620,10 @@ export function LogsPanel() {
   );
 }
 
-export function ReviewsPanel() {
+/** The Reviews tab is a lens, not a store (intake-ceremony ruling): intake batches
+ *  render as burn-downs over Tasks (source/batch provenance); legacy markdown
+ *  checklists — review files with no tasks pointing at them — render as before. */
+export function ReviewsPanel({ tasks }: { tasks: TaskItem[] }) {
   const [files, setFiles] = useState<string[]>([]);
   useEffect(() => {
     fetch(`/api/gallery?glob=${encodeURIComponent('.clyde/reviews/*.md')}`)
@@ -620,17 +631,63 @@ export function ReviewsPanel() {
       .then(setFiles)
       .catch(() => setFiles([]));
   }, []);
+  const batches = new Map<string, TaskItem[]>();
+  for (const t of tasks) if (t.batch) batches.set(t.batch, [...(batches.get(t.batch) ?? []), t]);
+  const batchNames = [...batches.keys()].sort().reverse();
+  const legacy = files.filter((f) => !batches.has(f.split('/').pop()!.replace(/\.md$/, '')));
   return (
     <div className="reviews-panel">
-      {files.length === 0 && (
+      {batchNames.length === 0 && legacy.length === 0 && (
         <div className="empty">
-          No reviews yet — batch feedback lands as markdown checklists in <code>.clyde/reviews/</code>.
+          No reviews yet — hit <strong>☰ Review</strong> in the composer to dump batch feedback; Clyde
+          distills it into confirmable tasks.
         </div>
       )}
-      {[...files].reverse().map((f) => (
+      {batchNames.map((b) => (
+        <BatchCard key={b} batch={b} tasks={batches.get(b)!} />
+      ))}
+      {[...legacy].reverse().map((f) => (
         <ReviewCard key={f} path={f} />
       ))}
     </div>
+  );
+}
+
+/** Burn-down over one intake batch. Settled = completed + declined — a reasoned
+ *  "no" burns down the same as a "done"; only undecided/undone items keep it open. */
+function BatchCard({ batch, tasks }: { batch: string; tasks: TaskItem[] }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const glyph = { pending: '○', in_progress: '◐', completed: '✓', declined: '✗' } as const;
+  const settled = tasks.filter((t) => t.status === 'completed' || t.status === 'declined').length;
+  const declined = tasks.filter((t) => t.status === 'declined').length;
+  const sorted = [...tasks].sort((a, b) => (a.source?.item ?? 0) - (b.source?.item ?? 0));
+  return (
+    <section className="panel batch-card">
+      <div className="review-burndown">
+        <div className="gauge-bar">
+          <div className="gauge-fill" style={{ width: tasks.length ? `${(settled / tasks.length) * 100}%` : '0%' }} />
+        </div>
+        <div className="gauge-label">
+          {settled}/{tasks.length} settled{declined > 0 && ` · ${declined} declined`} · {batch}
+        </div>
+      </div>
+      <ul className="batch-items">
+        {sorted.map((t) => (
+          <li key={t.id} className={`batch-item bi-${t.status}`}>
+            <span className="task-icon">{glyph[t.status]}</span>
+            <span className="bi-subject">
+              {t.subject}
+              {t.status === 'declined' && t.declineReason && <em className="bi-reason"> — {t.declineReason}</em>}
+            </span>
+            <span className="bi-id">#{t.id}</span>
+          </li>
+        ))}
+      </ul>
+      <button className="linklike" onClick={() => setShowRaw(!showRaw)}>
+        {showRaw ? 'hide raw dump' : 'show raw dump'}
+      </button>
+      {showRaw && <FileMarkdown path={`.clyde/reviews/${batch}.md`} />}
+    </section>
   );
 }
 
