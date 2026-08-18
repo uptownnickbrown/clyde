@@ -62,9 +62,9 @@
   },
   {
     "id": "11",
-    "subject": "Tasks panel: expand items, edit subject/status, dispatch preview (R1)",
+    "subject": "Tasks panel: edit subject/status, dispatch preview (R1 remainder)",
     "status": "pending",
-    "detail": "Clickable task expansion with full detail; editing writes to file + surfaces to agent as a user note (needs a wire-protocol addition); dispatch-prompt preview/editing rides on the canUseTool interception spike."
+    "detail": "Expansion shipped in 1220d07 (redesign wave). Remaining: editing writes to file + surfaces to agent as a user note (needs a wire-protocol addition); dispatch-prompt preview/editing rides on the canUseTool interception spike."
   },
   {
     "id": "12",
@@ -76,13 +76,13 @@
     "id": "13",
     "subject": "Fold review items into Tasks per lifecycle-test decision (R4 follow-up)",
     "status": "pending",
-    "detail": "Per the recorded decision: Reviews tab stays a lens; review items become Tasks with source provenance, declined-with-reasons state, and intake-batch grouping."
+    "detail": "Per the recorded decision: Reviews tab stays a lens; review items become Tasks with source provenance, declined-with-reasons state, and intake-batch grouping. Data model subsumed by #19 (the intake ceremony) — implement together."
   },
   {
     "id": "14",
     "subject": "New-session action in the UI (R5 remainder)",
-    "status": "pending",
-    "detail": "A \"New session\" affordance (replaces the --new boot flag footgun in dev). Server rotates the session dir + fresh SDK query; UI button with confirm."
+    "status": "completed",
+    "detail": "Done in 60179b2: top-bar button with inline confirm → new_session WS action → AgentSession.dispose() (abort SDK query, stop watcher, mute emits) + fresh ClydeStore + rebroadcast hello. Tasks/decisions/panels persist; threads/queue/events are per-session. Live-fire verified via qa/live-drive.mjs (conversation emptied, fresh round-trip OK)."
   },
   {
     "id": "15",
@@ -93,8 +93,8 @@
   {
     "id": "16",
     "subject": "UI/UX redesign wave against the Design Vision references",
-    "status": "pending",
-    "detail": "Read \"Clyde UI — Design Vision.md\" + .png (committed at repo root), diff the vision against the current UI using the 15-state QA capture set, propose a gap list ordered by impact, then implement with screenshot verification per state."
+    "status": "completed",
+    "detail": "Done in 1220d07 + 7a7d0f0 (break-glass session): design tokens per vision §6, shell (top bar / icon rail / capability panel / workbench), NEW Decisions panel, Tasks v2, git+conversation restyle, 18-state fixture QA + live-drive verification. See .clyde/HANDOFF.md for the full account; polish continues via the user's browser round."
   },
   {
     "id": "17",
@@ -108,5 +108,17 @@
     "status": "pending",
     "detail": "Unify comments/threads into one noun: Threads. (a) Start a thread off any top-level message without selecting text — including the user's own messages; (b) keep the select-text affordance as an entry flow that seeds the thread with the highlighted quote; (c) preserve multiple threads per message anchored to different highlighted spans (user relies on this). Needs shared ThreadAnchor to make quote/span optional + server compose/anchor handling + web entry points (hover affordance on messages).",
     "activeForm": "Unifying the threads metaphor"
+  },
+  {
+    "id": "19",
+    "subject": "Review ceremony: intake mode → distill → ask → Tasks with provenance",
+    "status": "pending",
+    "detail": "Per the intake-ceremony decision (DECISIONS.md 2026-08-18). Flow: (1) \"Start review\" composer mode AND agent auto-detect of unprompted feedback dumps; (2) raw dump saved verbatim to .clyde/reviews/<date>-<slug>.md as provenance; (3) agent distills to numbered items, echoes them back; (4) clarifying questions via AskUserQuestion (#15 is a prerequisite); (5) confirmed items become Tasks carrying source (review file + item), batch id, and a declined-with-reasons state (TaskItem additions in shared); (6) Reviews panel becomes a burn-down lens over task batches instead of parsing markdown checkboxes. Subsumes the data model of #13 — do them together."
+  },
+  {
+    "id": "20",
+    "subject": "Responsive layout pass (Design Vision §5)",
+    "status": "pending",
+    "detail": "Wide/medium/narrow behavior: medium = one auxiliary panel at a time; narrow = capability panels become overlays/drawers over the conversation; very narrow = conversation first. Priority order under constraint: conversation → composer/status → active panel → nav → diagnostics. Never squeeze every panel until none are pleasant."
   }
 ]
