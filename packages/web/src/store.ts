@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef } from 'react';
 import type {
   ClientMessage,
   CommitInfo,
+  GitStatus,
   PanelSpec,
   QueuedItem,
   ServerMessage,
@@ -28,6 +29,8 @@ export interface UIState {
   costUsd: number | null;
   /** When the current working stretch began (drives the work-bar timer). */
   workingSince: string | null;
+  gitStatus: GitStatus | null;
+  model: string | null;
 }
 
 const initial: UIState = {
@@ -45,6 +48,8 @@ const initial: UIState = {
   contextTokens: null,
   costUsd: null,
   workingSince: null,
+  gitStatus: null,
+  model: null,
 };
 
 type Action =
@@ -113,6 +118,8 @@ function reducer(state: UIState, action: Action): UIState {
         contextTokens: usage?.type === 'usage' ? (usage.contextTokens ?? null) : null,
         costUsd: cost?.type === 'usage' ? (cost.costUsd ?? null) : null,
         workingSince: s.status === 'working' && lastStatus ? lastStatus.ts : null,
+        gitStatus: s.gitStatus ?? null,
+        model: s.model ?? null,
       };
     }
     case 'server': {
@@ -129,6 +136,8 @@ function reducer(state: UIState, action: Action): UIState {
           return { ...state, queue: msg.items };
         case 'threads':
           return { ...state, threads: msg.threads };
+        case 'git_status':
+          return { ...state, gitStatus: msg.status };
         default:
           return state;
       }

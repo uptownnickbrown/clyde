@@ -48,6 +48,20 @@ export function Conversation({
 
   const { items, threadMessages } = useMemo(() => deriveItems(events), [events]);
 
+  // Speaker headers appear on speaker change only — consecutive same-speaker
+  // messages read as one continuous passage (document, not chat bubbles).
+  const { heads, liveNeedsHead } = useMemo(() => {
+    const heads = new Map<string, boolean>();
+    let last: 'user' | 'assistant' | null = null;
+    for (const it of items) {
+      if (it.kind === 'user' || it.kind === 'assistant') {
+        heads.set(it.event.id, last !== it.kind);
+        last = it.kind;
+      }
+    }
+    return { heads, liveNeedsHead: last !== 'assistant' };
+  }, [items]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || events.length === 0) return;
@@ -94,32 +108,36 @@ export function Conversation({
         switch (item.kind) {
           case 'user':
             return (
-              <div key={item.event.id} className="msg-user">
-                <Md>{item.event.text}</Md>
-                {(item.event.attachments?.length ?? 0) > 0 && (
-                  <div className="msg-attachments">
-                    {item.event.attachments!.map((p) => (
-                      <a
-                        key={p}
-                        href={`/api/project-file?path=${encodeURIComponent(p)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {/\.(png|jpe?g|gif|webp|svg)$/i.test(p) ? (
-                          <img src={`/api/project-file?path=${encodeURIComponent(p)}`} alt={p} />
-                        ) : (
-                          <span className="attachment-file">📄 {p.split('/').pop()}</span>
-                        )}
-                      </a>
-                    ))}
-                  </div>
-                )}
+              <div key={item.event.id} className="msg msg-user">
+                {heads.get(item.event.id) && <SpeakerHead who="user" ts={item.event.ts} />}
+                <div className="user-body">
+                  <Md>{item.event.text}</Md>
+                  {(item.event.attachments?.length ?? 0) > 0 && (
+                    <div className="msg-attachments">
+                      {item.event.attachments!.map((p) => (
+                        <a
+                          key={p}
+                          href={`/api/project-file?path=${encodeURIComponent(p)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {/\.(png|jpe?g|gif|webp|svg)$/i.test(p) ? (
+                            <img src={`/api/project-file?path=${encodeURIComponent(p)}`} alt={p} />
+                          ) : (
+                            <span className="attachment-file">📄 {p.split('/').pop()}</span>
+                          )}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           case 'assistant': {
             const anchored = threadsByMessage.get(item.event.id) ?? [];
             return (
-              <div key={item.event.id} id={`msg-${item.event.id}`} className="msg-assistant-wrap">
+              <div key={item.event.id} id={`msg-${item.event.id}`} className="msg msg-assistant-wrap">
+                {heads.get(item.event.id) && <SpeakerHead who="clyde" ts={item.event.ts} />}
                 <div className="msg-assistant" onMouseUp={(e) => onMouseUp(e, item.event.id)}>
                   <Md>{item.event.markdown}</Md>
                 </div>
@@ -173,9 +191,12 @@ export function Conversation({
 
       {Object.entries(liveText).map(([turnId, text]) =>
         text ? (
-          <div key={turnId} className="msg-assistant live">
-            <Md>{text.replace(/^\s*\[\[sidebar[^\]]*\]\]\s*/, '')}</Md>
-            <span className="cursor">▋</span>
+          <div key={turnId} className="msg msg-assistant-wrap">
+            {liveNeedsHead && <SpeakerHead who="clyde" ts={new Date().toISOString()} />}
+            <div className="msg-assistant live">
+              <Md>{text.replace(/^\s*\[\[sidebar[^\]]*\]\]\s*/, '')}</Md>
+              <span className="cursor">▋</span>
+            </div>
           </div>
         ) : null,
       )}
@@ -194,6 +215,27 @@ export function Conversation({
           💬 Start thread
         </button>
       )}
+    </div>
+  );
+}
+
+function SpeakerHead({ who, ts }: { who: 'user' | 'clyde'; ts: string }) {
+  return (
+    <div className="msg-head">
+      {who === 'clyde' ? (
+        <span className="avatar avatar-clyde">◆</span>
+      ) : (
+        <span className="avatar avatar-user">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+            <circle cx="10" cy="6.5" r="3" />
+            <path d="M4 16.5c1.2-3 3.5-4.5 6-4.5s4.8 1.5 6 4.5" />
+          </svg>
+        </span>
+      )}
+      <span className="msg-name">{who === 'clyde' ? 'Clyde' : 'You'}</span>
+      <span className="msg-time">
+        {new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      </span>
     </div>
   );
 }

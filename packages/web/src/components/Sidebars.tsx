@@ -5,23 +5,60 @@ import { Md } from './Md';
 // ---------- Left rail ----------
 
 export function TasksPanel({ tasks, delegated }: { tasks: TaskItem[]; delegated?: Set<string> }) {
-  const icon = { pending: '○', in_progress: '◐', completed: '●' } as const;
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [showDone, setShowDone] = useState(false);
+  const icon = { pending: '○', in_progress: '◐', completed: '✓' } as const;
+  const inProgress = tasks.filter((t) => t.status === 'in_progress');
+  const pending = tasks.filter((t) => t.status === 'pending');
+  const completed = tasks.filter((t) => t.status === 'completed');
+
+  const Item = ({ t }: { t: TaskItem }) => (
+    <li
+      className={`task task-${t.status}${openId === t.id ? ' open' : ''}`}
+      onClick={() => setOpenId(openId === t.id ? null : t.id)}
+    >
+      <span className="task-icon">{icon[t.status]}</span>
+      <div className="task-main">
+        <span className="task-subject">
+          {t.status === 'in_progress' ? (t.activeForm ?? t.subject) : t.subject}
+          {delegated?.has(t.subject) && <span className="task-delegated">delegated</span>}
+        </span>
+        {openId === t.id && (
+          <div className="task-detail">
+            {t.detail ?? <span className="empty">no detail recorded</span>}
+            <div className="task-meta">
+              #{t.id} · {t.status.replace('_', ' ')}
+            </div>
+          </div>
+        )}
+      </div>
+    </li>
+  );
+
   return (
-    <section className="panel">
-      <h3>Tasks</h3>
+    <div className="tasks-panel panel-body">
       {tasks.length === 0 && <div className="empty">no tasks yet</div>}
-      <ul className="tasks">
-        {tasks.map((t) => (
-          <li key={t.id} className={`task-${t.status}`}>
-            <span className="task-icon">{icon[t.status]}</span>
-            <span>
-              {t.subject}
-              {delegated?.has(t.subject) && <span className="task-delegated">delegated</span>}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
+      {inProgress.length > 0 && (
+        <>
+          <div className="group-label">In progress</div>
+          <ul className="tasks">{inProgress.map((t) => <Item key={t.id} t={t} />)}</ul>
+        </>
+      )}
+      {pending.length > 0 && (
+        <>
+          <div className="group-label">Up next</div>
+          <ul className="tasks">{pending.map((t) => <Item key={t.id} t={t} />)}</ul>
+        </>
+      )}
+      {completed.length > 0 && (
+        <>
+          <button className="group-toggle" onClick={() => setShowDone(!showDone)}>
+            {showDone ? '▾' : '▸'} {completed.length} completed
+          </button>
+          {showDone && <ul className="tasks">{completed.map((t) => <Item key={t.id} t={t} />)}</ul>}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -69,27 +106,36 @@ export function AgentsPanel({ events }: { events: SessionEvent[] }) {
   );
 }
 
+function relTime(ts: string): string {
+  const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
 export function GitPanel({ commits }: { commits: CommitInfo[] }) {
   const [openSha, setOpenSha] = useState<string | null>(null);
   return (
-    <section className="panel">
-      <h3>Git timeline</h3>
+    <div className="git-panel panel-body">
       {commits.length === 0 && <div className="empty">no commits yet</div>}
       <ul className="commits">
         {commits.map((c) => (
           <li key={c.sha} onClick={() => setOpenSha(openSha === c.sha ? null : c.sha)}>
             <div className="commit-line">
               <span className="commit-sha">{c.sha.slice(0, 7)}</span>
-              <span className="diffstat">
-                +{c.insertions} −{c.deletions}
-              </span>
+              <span className="commit-time">{relTime(c.ts)}</span>
             </div>
             <div className="commit-subject">{c.subject}</div>
+            <div className="diffstat">
+              <span className="ins">+{c.insertions}</span> <span className="del">−{c.deletions}</span> ·{' '}
+              {c.filesChanged} file{c.filesChanged === 1 ? '' : 's'}
+            </div>
             {openSha === c.sha && <CommitDetail commit={c} />}
           </li>
         ))}
       </ul>
-    </section>
+    </div>
   );
 }
 

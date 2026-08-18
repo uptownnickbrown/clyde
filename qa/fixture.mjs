@@ -119,8 +119,8 @@ export function buildSnapshot(projectRoot) {
     tasks: [
       { id: '1', subject: 'Wire protocol + event log', status: 'completed' },
       { id: '2', subject: 'Conversation document with span comments', status: 'completed' },
-      { id: '3', subject: 'Playwright screenshot QA harness', status: 'in_progress' },
-      { id: '4', subject: 'Context meter: pull-back-in affordance', status: 'pending' },
+      { id: '3', subject: 'Playwright screenshot QA harness', status: 'in_progress', activeForm: 'Building the QA harness', detail: 'qa/fixture-server.mjs serves the built UI over a canned snapshot; qa/screenshot.mjs captures every state at 1440x900@2x into qa/screenshots/.' },
+      { id: '4', subject: 'Context meter: pull-back-in affordance', status: 'pending', detail: 'Files-touched list with a per-file re-read action so stale context can be pulled back in after compaction.' },
     ],
     commits: [
       { sha: '1931addf00aa', subject: 'Default agent effort to xhigh (CLYDE_EFFORT to override)', ts: T(13), filesChanged: 1, insertions: 2, deletions: 1, messageId: 'a3' },
@@ -129,5 +129,7 @@ export function buildSnapshot(projectRoot) {
       { sha: '556de1928cc0', subject: 'Scope document: Clyde — conversation-centric IDE for agent-driven builds', ts: T(1), filesChanged: 1, insertions: 113, deletions: 0 },
     ],
     status: 'working',
+    gitStatus: { branch: 'main', dirtyFiles: 3 },
+    model: 'claude-fable-5',
   };
 }

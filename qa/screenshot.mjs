@@ -23,20 +23,29 @@ const shot = async (name) => {
   await page.screenshot({ path: path.join(OUT, `${name}.png`) });
   console.log(`  ✓ ${name}`);
 };
+/** Open a capability panel from the icon rail. */
+const rail = (label) => page.locator(`.rail-btn[title="${label}"]`).click();
 
 try {
   await page.goto(`http://localhost:${PORT}/`);
   await page.waitForSelector('.msg-assistant');
   await page.waitForTimeout(1200); // let the live delta finish streaming + gallery fetch settle
 
-  // 1 — cold-open overview: conversation top, goal tab, rails populated
+  // 1 — cold-open overview: conversation top, tasks panel, goal workbench
   await page.evaluate(() => document.querySelector('.conversation').scrollTo(0, 0));
   await shot('01-overview');
+
+  // 1b — tasks panel with an item expanded + completed group opened
+  await page.locator('.task').first().click();
+  await page.locator('.group-toggle').click();
+  await shot('01b-tasks-expanded');
+  await page.locator('.task.open').click();
+  await page.locator('.group-toggle').click();
 
   // 2 — conversation tail: live streaming turn, composer with queued items
   await page.evaluate(() => {
     const c = document.querySelector('.conversation');
-    c.scrollTo(0, c.scrollHeight);
+    c.scrollTo({ top: c.scrollHeight, behavior: 'instant' });
   });
   await page.waitForTimeout(300);
   await shot('02-conversation-tail');
@@ -56,64 +65,83 @@ try {
   await shot('03-activity-chip-open');
   await chip.click();
 
-  // 4 — span selection → comment FAB
+  // 4 — span selection → thread FAB
   const para = page.locator('#msg-a2 .msg-assistant li').first();
+  await para.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(600); // smooth scroll must settle before measuring
   const box = await para.boundingBox();
-  await page.mouse.move(box.x + 4, box.y + box.height / 2);
+  const selY = box.y + 11; // inside the first wrapped line — the line seam selects nothing
+  await page.mouse.move(box.x + 4, selY);
   await page.mouse.down();
-  await page.mouse.move(box.x + Math.min(box.width - 10, 420), box.y + box.height / 2, { steps: 10 });
+  await page.mouse.move(box.x + Math.min(box.width - 10, 420), selY, { steps: 10 });
   await page.mouse.up();
   await page.waitForSelector('.comment-fab');
   await shot('04-selection-fab');
 
-  // 5 — comment box open with text
+  // 5 — thread-start box open with text
   await page.locator('.comment-fab').click();
   await page.waitForSelector('.comment-box textarea');
   await page.locator('.comment-box textarea').fill('Is the append actually fsynced? A crash between append and broadcast should not lose the turn.');
+  await page.waitForTimeout(700); // the box smooth-scrolls itself to center
   await shot('05-comment-box');
   await page.locator('.comment-box .thread-actions button', { hasText: 'Cancel' }).click();
 
-  // 6-8 — right-rail tabs
-  await page.locator('.tabs button', { hasText: 'panels' }).click();
+  // 6 — right workbench: pushed panels (gallery + metrics)
+  await page.locator('.wb-tabs button', { hasText: 'Panels' }).click();
   await page.waitForTimeout(600); // gallery + metrics fetches
   await shot('06-panels-tab');
 
-  await page.locator('.tabs button', { hasText: 'activity' }).click();
+  // 7-8 — capability panels: activity, context
+  await rail('Activity');
   await page.locator('.activity-panel .act').first().click(); // expand latest entry
-  await shot('07-activity-tab');
+  await shot('07-activity-panel');
 
-  await page.locator('.tabs button', { hasText: 'context' }).click();
-  await shot('08-context-tab');
+  await rail('Context');
+  await shot('08-context-panel');
 
   // 9 — expanded commit card in the git timeline
+  await rail('Git timeline');
   await page.locator('.commits li').first().click();
   await page.waitForSelector('.commit-detail pre');
   await shot('09-commit-expanded');
   await page.locator('.commits li').first().click();
 
-  // 10 — reviews tab with burn-down
-  await page.locator('.tabs button', { hasText: 'reviews' }).click();
+  // 10 — reviews panel with burn-down
+  await rail('Reviews');
   await page.waitForTimeout(500);
-  await shot('10-reviews-tab');
+  await shot('10-reviews-panel');
 
-  // 10b — agents tab: one completed dispatch, one running with the delegated-task link
-  await page.locator('.tabs button', { hasText: 'agents' }).click();
+  // 10b — agents panel: one completed dispatch, one running with the delegated-task link
+  await rail('Agents');
   await page.locator('.agents-panel .linklike').first().click(); // expand newest prompt
-  await shot('10b-agents-tab');
+  await shot('10b-agents-panel');
 
-  // 11 — logs tab
-  await page.locator('.tabs button', { hasText: 'logs' }).click();
+  // 10c — decisions ledger (parsed from .clyde/DECISIONS.md)
+  await rail('Decisions');
+  await page.waitForSelector('.decision-card');
+  await shot('10c-decisions-panel');
+
+  // 11 — logs panel
+  await rail('Logs');
   await page.waitForTimeout(400);
-  await shot('11-logs-tab');
+  await shot('11-logs-panel');
 
   // 12 — goal tab scrolled to the bottom: SCOPE.md's risks table must render as a table (GFM)
-  await page.locator('.tabs button', { hasText: 'goal' }).click();
+  await page.locator('.wb-tabs button', { hasText: 'Goal' }).click();
   await page.evaluate(() => {
-    const rail = document.querySelector('.right-rail');
-    rail.scrollTo(0, rail.scrollHeight);
+    const rail2 = document.querySelector('.right-panel .panel-scroll');
+    rail2.scrollTo(0, rail2.scrollHeight);
   });
   await page.waitForTimeout(300);
   await shot('12-goal-scope-table');
+
+  // 12b — collapsed chrome: left panel and workbench both closed, conversation full-bleed
+  await rail('Logs'); // toggles the open logs panel closed
+  await page.locator('.wb-tabs .wb-collapse').click();
+  await page.waitForTimeout(200);
+  await shot('12b-collapsed-chrome');
+  await page.locator('.wb-expand').click();
+  await rail('Tasks');
 
   // 13 — dogfood: the real dev app, if it is running (non-fatal if not)
   try {

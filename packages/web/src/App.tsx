@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useClyde } from './store';
 import { Conversation } from './components/Conversation';
 import { Composer } from './components/Composer';
 import { WorkBar } from './components/WorkBar';
+import { TopBar } from './components/TopBar';
+import { Rail, capabilityLabel, type Capability } from './components/Rail';
+import { DecisionsPanel } from './components/Decisions';
 import {
   ActivityPanel,
   AgentsPanel,
@@ -15,20 +18,28 @@ import {
   TasksPanel,
 } from './components/Sidebars';
 
-type RightTab = 'goal' | 'panels' | 'reviews' | 'agents' | 'activity' | 'context' | 'logs';
+// Shell layout (Design Vision): stable top bar · icon rail · one capability panel ·
+// conversation center · contextual right workbench. Panels resize and remember.
+
+type WbTab = 'goal' | 'panels';
+
+const store = {
+  get: (k: string, fallback: string) => localStorage.getItem(k) ?? fallback,
+  set: (k: string, v: string) => localStorage.setItem(k, v),
+};
 
 export default function App() {
   const { state, send } = useClyde();
-  const [tab, setTab] = useState<RightTab>('goal');
-  const [railW, setRailW] = useState(() => Number(localStorage.getItem('clyde.rightRailWidth')) || 290);
+  const [capability, setCapability] = useState<Capability>(() => store.get('clyde.capability', 'tasks') as Capability);
+  const [leftOpen, setLeftOpen] = useState(() => store.get('clyde.leftOpen', '1') === '1');
+  const [leftW, setLeftW] = useState(() => Number(store.get('clyde.leftW', '300')) || 300);
+  const [rightOpen, setRightOpen] = useState(() => store.get('clyde.rightOpen', '1') === '1');
+  const [rightW, setRightW] = useState(() => Number(store.get('clyde.rightW', '340')) || 340);
+  const [wbTab, setWbTab] = useState<WbTab>(() => store.get('clyde.wbTab', 'goal') as WbTab);
 
-  const startRailDrag = (e: React.MouseEvent) => {
+  const drag = (apply: (clientX: number) => void) => (e: React.MouseEvent) => {
     e.preventDefault();
-    const move = (ev: MouseEvent) => {
-      const w = Math.min(720, Math.max(240, window.innerWidth - ev.clientX));
-      setRailW(w);
-      localStorage.setItem('clyde.rightRailWidth', String(w));
-    };
+    const move = (ev: MouseEvent) => apply(ev.clientX);
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
@@ -36,85 +47,152 @@ export default function App() {
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
   };
+  const dragLeft = drag((x) => {
+    const w = Math.min(520, Math.max(230, x - 46));
+    setLeftW(w);
+    store.set('clyde.leftW', String(w));
+  });
+  const dragRight = drag((x) => {
+    const w = Math.min(720, Math.max(250, window.innerWidth - x));
+    setRightW(w);
+    store.set('clyde.rightW', String(w));
+  });
 
-  const pct = state.contextTokens ? Math.min(100, (state.contextTokens / 1_000_000) * 100) : 0;
+  const selectCapability = (c: Capability) => {
+    if (c === capability && leftOpen) {
+      setLeftOpen(false);
+      store.set('clyde.leftOpen', '0');
+      return;
+    }
+    setCapability(c);
+    setLeftOpen(true);
+    store.set('clyde.capability', c);
+    store.set('clyde.leftOpen', '1');
+  };
 
-  // Tasks currently delegated: dispatches whose description names a task and whose
-  // tool_result hasn't landed yet (the R8 linking convention).
-  const resultIds = new Set(
-    state.events.filter((e) => e.type === 'tool_result').map((e) => (e.type === 'tool_result' ? e.toolUseId : '')),
-  );
-  const delegated = new Set(
-    state.events
-      .filter((e) => e.type === 'dispatch' && e.description && !resultIds.has(e.toolUseId))
-      .map((e) => (e.type === 'dispatch' ? e.description! : '')),
-  );
+  // Tasks currently delegated: dispatches naming a task whose result hasn't landed (R8).
+  const { delegated, agentsRunning } = useMemo(() => {
+    const resultIds = new Set(
+      state.events.filter((e) => e.type === 'tool_result').map((e) => (e.type === 'tool_result' ? e.toolUseId : '')),
+    );
+    const open = state.events.filter((e) => e.type === 'dispatch' && !resultIds.has(e.toolUseId));
+    return {
+      delegated: new Set(open.map((e) => (e.type === 'dispatch' ? (e.description ?? '') : ''))),
+      agentsRunning: open.length,
+    };
+  }, [state.events]);
+
+  const status = state.connected ? state.status : 'disconnected';
 
   return (
     <div className="app">
-      <header className="header">
-        <div className="brand">
-          <span className="logo">◆</span> Clyde
-          <span className="project-name">{state.projectName}</span>
-        </div>
-        <div className="header-right">
-          <div className="mini-gauge" title={`context ~${Math.round((state.contextTokens ?? 0) / 1000)}k / 1M`}>
-            <div className="gauge-fill" style={{ width: `${pct}%` }} />
-          </div>
-          <span className={`status status-${state.status}`}>
-            {state.connected ? state.status : 'connecting…'}
-          </span>
-        </div>
-      </header>
+      <TopBar
+        projectName={state.projectName}
+        gitStatus={state.gitStatus}
+        status={state.status}
+        connected={state.connected}
+        contextTokens={state.contextTokens}
+        costUsd={state.costUsd}
+        send={send}
+        onContextClick={() => selectCapability('context')}
+      />
 
       <div className="columns">
-        <aside className="left-rail">
-          <TasksPanel tasks={state.tasks} delegated={delegated} />
-          <GitPanel commits={state.commits} />
-        </aside>
+        <Rail
+          active={leftOpen ? capability : null}
+          badges={{
+            tasksInProgress: state.tasks.filter((t) => t.status === 'in_progress').length,
+            agentsRunning,
+            dirtyFiles: state.gitStatus?.dirtyFiles ?? 0,
+          }}
+          onSelect={selectCapability}
+        />
+
+        {leftOpen && (
+          <>
+            <aside className="left-panel" style={{ width: leftW }}>
+              <header className="panel-head">{capabilityLabel(capability)}</header>
+              <div className="panel-scroll">
+                {capability === 'tasks' && <TasksPanel tasks={state.tasks} delegated={delegated} />}
+                {capability === 'git' && <GitPanel commits={state.commits} />}
+                {capability === 'decisions' && <DecisionsPanel />}
+                {capability === 'reviews' && <ReviewsPanel />}
+                {capability === 'agents' && <AgentsPanel events={state.events} />}
+                {capability === 'activity' && <ActivityPanel events={state.events} />}
+                {capability === 'context' && (
+                  <ContextPanel
+                    events={state.events}
+                    contextTokens={state.contextTokens}
+                    costUsd={state.costUsd}
+                    status={state.status}
+                    send={send}
+                  />
+                )}
+                {capability === 'logs' && <LogsPanel />}
+              </div>
+            </aside>
+            <div className="resizer" onMouseDown={dragLeft} title="Drag to resize" />
+          </>
+        )}
 
         <main className="center">
           <Conversation
             events={state.events}
             threads={state.threads}
             liveText={state.liveText}
-            status={state.connected ? state.status : 'disconnected'}
+            status={status}
             send={send}
           />
-          <WorkBar
-            status={state.connected ? state.status : 'disconnected'}
-            since={state.workingSince}
-            tasks={state.tasks}
-            events={state.events}
-          />
-          <Composer status={state.status} queue={state.queue} send={send} />
+          <WorkBar status={status} since={state.workingSince} tasks={state.tasks} events={state.events} />
+          <Composer status={state.status} queue={state.queue} model={state.model} send={send} />
         </main>
 
-        <div className="rail-resizer" onMouseDown={startRailDrag} title="Drag to resize" />
-        <aside className="right-rail" style={{ width: railW }}>
-          <nav className="tabs">
-            {(['goal', 'panels', 'reviews', 'agents', 'activity', 'context', 'logs'] as RightTab[]).map((t) => (
-              <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-                {t}
-              </button>
-            ))}
-          </nav>
-          {tab === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
-          {tab === 'panels' && <PushedPanels panels={state.panels} />}
-          {tab === 'reviews' && <ReviewsPanel />}
-          {tab === 'agents' && <AgentsPanel events={state.events} />}
-          {tab === 'activity' && <ActivityPanel events={state.events} />}
-          {tab === 'logs' && <LogsPanel />}
-          {tab === 'context' && (
-            <ContextPanel
-              events={state.events}
-              contextTokens={state.contextTokens}
-              costUsd={state.costUsd}
-              status={state.status}
-              send={send}
-            />
-          )}
-        </aside>
+        {rightOpen ? (
+          <>
+            <div className="resizer" onMouseDown={dragRight} title="Drag to resize" />
+            <aside className="right-panel" style={{ width: rightW }}>
+              <nav className="wb-tabs">
+                {(['goal', 'panels'] as WbTab[]).map((t) => (
+                  <button
+                    key={t}
+                    className={wbTab === t ? 'active' : ''}
+                    onClick={() => {
+                      setWbTab(t);
+                      store.set('clyde.wbTab', t);
+                    }}
+                  >
+                    {t === 'goal' ? 'Goal' : 'Panels'}
+                  </button>
+                ))}
+                <button
+                  className="wb-collapse"
+                  title="Collapse the workbench"
+                  onClick={() => {
+                    setRightOpen(false);
+                    store.set('clyde.rightOpen', '0');
+                  }}
+                >
+                  ⟩
+                </button>
+              </nav>
+              <div className="panel-scroll">
+                {wbTab === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
+                {wbTab === 'panels' && <PushedPanels panels={state.panels} />}
+              </div>
+            </aside>
+          </>
+        ) : (
+          <button
+            className="wb-expand"
+            title="Open the workbench"
+            onClick={() => {
+              setRightOpen(true);
+              store.set('clyde.rightOpen', '1');
+            }}
+          >
+            ⟨
+          </button>
+        )}
       </div>
     </div>
   );

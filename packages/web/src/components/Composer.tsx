@@ -11,10 +11,12 @@ interface PendingFile {
 export function Composer({
   status,
   queue,
+  model,
   send,
 }: {
   status: string;
   queue: QueuedItem[];
+  model: string | null;
   send: (msg: ClientMessage) => void;
 }) {
   const [text, setText] = useState('');
@@ -136,6 +138,11 @@ export function Composer({
               e.target.value = '';
             }}
           />
+          {model && (
+            <span className="model-chip" title={`Agent model: ${model}`}>
+              {model.replace(/^claude-/, '')}
+            </span>
+          )}
         </div>
         <div>
           {working && (
