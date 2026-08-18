@@ -74,7 +74,13 @@ export default function App() {
         </aside>
 
         <main className="center">
-          <Conversation events={state.events} threads={state.threads} liveText={state.liveText} send={send} />
+          <Conversation
+            events={state.events}
+            threads={state.threads}
+            liveText={state.liveText}
+            status={state.connected ? state.status : 'disconnected'}
+            send={send}
+          />
           <WorkBar
             status={state.connected ? state.status : 'disconnected'}
             since={state.workingSince}

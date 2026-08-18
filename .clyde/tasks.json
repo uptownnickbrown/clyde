@@ -101,5 +101,12 @@
     "subject": "Backfill event-log holes after restarts (lost turn tails)",
     "status": "pending",
     "detail": "A restart can kill the server before it consumes the tail of the SDK stream: the agent's last messages/tool calls execute but never reach events.jsonl, leaving a hole in the document (observed: a sidebar reply + TaskCreate #16 vanished; user saw it stream live, then it disappeared on reload). Fix: on resume boot, read the SDK's own session transcript (~/.claude/projects/<hash>/<sessionId>.jsonl), find messages after the last logged event, and translate+append them before starting the new query. Also: sequence intentional restarts (like the tasks.json reload touch) behind stream quiescence."
+  },
+  {
+    "id": "18",
+    "subject": "Threads metaphor: start threads anywhere, one noun (review items 4+5)",
+    "status": "pending",
+    "detail": "Unify comments/threads into one noun: Threads. (a) Start a thread off any top-level message without selecting text — including the user's own messages; (b) keep the select-text affordance as an entry flow that seeds the thread with the highlighted quote; (c) preserve multiple threads per message anchored to different highlighted spans (user relies on this). Needs shared ThreadAnchor to make quote/span optional + server compose/anchor handling + web entry points (hover affordance on messages).",
+    "activeForm": "Unifying the threads metaphor"
   }
 ]

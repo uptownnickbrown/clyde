@@ -20,17 +20,26 @@ interface PendingComment {
   y: number;
 }
 
+/** One autosize for every message box — main composer, thread reply, new thread. */
+function autosize(el: HTMLTextAreaElement) {
+  el.style.height = 'auto';
+  el.style.height = `${Math.min(el.scrollHeight + 2, 280)}px`;
+}
+
 export function Conversation({
   events,
   threads,
   liveText,
+  status,
   send,
 }: {
   events: SessionEvent[];
   threads: Thread[];
   liveText: Record<string, string>;
+  status: string;
   send: (msg: ClientMessage) => void;
 }) {
+  const working = status === 'working';
   const [pending, setPending] = useState<PendingComment | null>(null);
   const [composing, setComposing] = useState<{ messageId: string; quote: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -115,8 +124,9 @@ export function Conversation({
                   <Md>{item.event.markdown}</Md>
                 </div>
                 {composing?.messageId === item.event.id && (
-                  <CommentBox
+                  <ThreadStartBox
                     quote={composing.quote}
+                    working={working}
                     onSubmit={(text, urgent) => {
                       send({
                         type: 'create_thread',
@@ -135,7 +145,7 @@ export function Conversation({
                   />
                 )}
                 {anchored.map((t) => (
-                  <ThreadCard key={t.id} thread={t} messages={threadMessages.get(t.id) ?? []} send={send} />
+                  <ThreadCard key={t.id} thread={t} messages={threadMessages.get(t.id) ?? []} working={working} send={send} />
                 ))}
               </div>
             );
@@ -181,7 +191,7 @@ export function Conversation({
             setPending(null);
           }}
         >
-          💬 Comment
+          💬 Start thread
         </button>
       )}
     </div>
@@ -286,13 +296,30 @@ function shortPath(p: string): string {
 function ThreadCard({
   thread,
   messages,
+  working,
   send,
 }: {
   thread: Thread;
   messages: SessionEvent[];
+  working: boolean;
   send: (msg: ClientMessage) => void;
 }) {
   const [reply, setReply] = useState('');
+  const [showResolved, setShowResolved] = useState(false);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const submit = (urgent: boolean) => {
+    if (!reply.trim()) return;
+    send({ type: 'thread_reply', threadId: thread.id, text: reply.trim(), urgent });
+    setReply('');
+    if (taRef.current) taRef.current.style.height = '';
+  };
+  if (thread.status === 'resolved' && !showResolved) {
+    return (
+      <button className="thread-stub" onClick={() => setShowResolved(true)}>
+        ✓ “{thread.anchor.quote.slice(0, 90)}” · {messages.length} repl{messages.length === 1 ? 'y' : 'ies'} ▸
+      </button>
+    );
+  }
   return (
     <div className={`thread-card ${thread.status}`}>
       <div className="thread-quote">“{thread.anchor.quote.slice(0, 200)}”</div>
@@ -303,32 +330,60 @@ function ThreadCard({
       ))}
       {thread.status === 'open' ? (
         <div className="thread-actions">
-          <input
+          <textarea
+            ref={taRef}
+            rows={1}
             value={reply}
             placeholder="Reply in thread…"
-            onChange={(e) => setReply(e.target.value)}
+            onChange={(e) => {
+              setReply(e.target.value);
+              autosize(e.target);
+            }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && reply.trim()) {
-                send({ type: 'thread_reply', threadId: thread.id, text: reply.trim() });
-                setReply('');
+              // Slack semantics everywhere: Enter sends, Shift+Enter inserts a newline.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submit(false);
               }
             }}
           />
+          {working && (
+            <button
+              className="danger"
+              disabled={!reply.trim()}
+              title="Interrupt in-flight work and deliver this reply now"
+              onClick={() => submit(true)}
+            >
+              Stop &amp; send
+            </button>
+          )}
+          <button
+            className="primary"
+            disabled={!reply.trim()}
+            title="Enter sends · Shift+Enter for newline"
+            onClick={() => submit(false)}
+          >
+            Send ⏎
+          </button>
           <button onClick={() => send({ type: 'resolve_thread', threadId: thread.id })}>Resolve</button>
         </div>
       ) : (
-        <div className="thread-resolved">✓ resolved</div>
+        <button className="thread-resolved linklike" onClick={() => setShowResolved(false)}>
+          ✓ resolved — collapse ▾
+        </button>
       )}
     </div>
   );
 }
 
-function CommentBox({
+function ThreadStartBox({
   quote,
+  working,
   onSubmit,
   onCancel,
 }: {
   quote: string;
+  working: boolean;
   onSubmit: (text: string, urgent: boolean) => void;
   onCancel: () => void;
 }) {
@@ -344,15 +399,37 @@ function CommentBox({
       <textarea
         autoFocus
         value={text}
-        placeholder="Comment on this…"
-        onChange={(e) => setText(e.target.value)}
+        placeholder="Start a thread…"
+        onChange={(e) => {
+          setText(e.target.value);
+          autosize(e.target);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && text.trim()) {
+            e.preventDefault();
+            onSubmit(text.trim(), false);
+          }
+          if (e.key === 'Escape') onCancel();
+        }}
       />
       <div className="thread-actions">
-        <button disabled={!text.trim()} onClick={() => onSubmit(text.trim(), false)}>
-          Comment
-        </button>
-        <button disabled={!text.trim()} onClick={() => onSubmit(text.trim(), true)} title="Interrupt current work">
-          Comment now (interrupt)
+        {working && (
+          <button
+            className="danger"
+            disabled={!text.trim()}
+            title="Interrupt in-flight work and deliver this now"
+            onClick={() => onSubmit(text.trim(), true)}
+          >
+            Stop &amp; send
+          </button>
+        )}
+        <button
+          className="primary"
+          disabled={!text.trim()}
+          title="Enter sends · Shift+Enter for newline"
+          onClick={() => onSubmit(text.trim(), false)}
+        >
+          Send ⏎
         </button>
         <button onClick={onCancel}>Cancel</button>
       </div>
