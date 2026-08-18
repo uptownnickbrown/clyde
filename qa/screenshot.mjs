@@ -31,7 +31,8 @@ try {
   await page.waitForSelector('.msg-assistant');
   await page.waitForTimeout(1200); // let the live delta finish streaming + gallery fetch settle
 
-  // 1 — cold-open overview: conversation top, tasks panel, goal workbench
+  // 1 — cold-open overview: conversation top, tasks panel, questions workbench
+  // (the right rail is attention-only; Goal and Artifacts live in the left rail)
   await page.evaluate(() => document.querySelector('.conversation').scrollTo(0, 0));
   await shot('01-overview');
 
@@ -101,10 +102,19 @@ try {
   await shot('04b-message-thread');
   await page.locator('.comment-box .thread-actions button', { hasText: 'Cancel' }).click();
 
-  // 6 — right workbench: pushed panels (gallery + metrics)
-  await page.locator('.wb-tabs button', { hasText: 'Panels' }).click();
+  // 6 — artifacts capability: the pushed-panel registry (gallery + metrics),
+  // now a left-rail capability (name kept stable — same content intent)
+  await rail('Artifacts');
   await page.waitForTimeout(600); // gallery + metrics fetches
   await shot('06-panels-tab');
+
+  // 6b — goal panel in edit mode: full-height monospace editor with SCOPE.md
+  // loaded, Save/Cancel beneath (Esc cancels)
+  await rail('Goal');
+  await page.locator('.goal-edit-btn').click();
+  await page.waitForSelector('.goal-edit textarea');
+  await shot('06b-goal-edit-mode');
+  await page.keyboard.press('Escape'); // back to the rendered view
 
   // 7-8 — capability panels: activity, context
   await rail('Activity');
@@ -141,17 +151,17 @@ try {
   await page.waitForTimeout(400);
   await shot('11-logs-panel');
 
-  // 12 — goal tab scrolled to the bottom: SCOPE.md's risks table must render as a table (GFM)
-  await page.locator('.wb-tabs button', { hasText: 'Goal' }).click();
+  // 12 — goal capability scrolled to the bottom: SCOPE.md's risks table must render as a table (GFM)
+  await rail('Goal');
   await page.evaluate(() => {
-    const rail2 = document.querySelector('.right-panel .panel-scroll');
-    rail2.scrollTo(0, rail2.scrollHeight);
+    const panel = document.querySelector('.left-panel .panel-scroll');
+    panel.scrollTo(0, panel.scrollHeight);
   });
   await page.waitForTimeout(300);
   await shot('12-goal-scope-table');
 
   // 12b — collapsed chrome: left panel and workbench both closed, conversation full-bleed
-  await rail('Logs'); // toggles the open logs panel closed
+  await rail('Goal'); // toggles the open goal panel closed
   await page.locator('.wb-tabs .wb-collapse').click();
   await page.waitForTimeout(200);
   await shot('12b-collapsed-chrome');

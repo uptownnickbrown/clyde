@@ -138,6 +138,8 @@ function reducer(state: UIState, action: Action): UIState {
           return { ...state, threads: msg.threads };
         case 'git_status':
           return { ...state, gitStatus: msg.status };
+        case 'goal':
+          return { ...state, goalMarkdown: msg.markdown };
         default:
           return state;
       }

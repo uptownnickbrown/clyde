@@ -3,10 +3,12 @@
 // collapses the panel (Design Vision §2). Badges communicate attention, not decoration.
 
 export type Capability =
+  | 'goal'
   | 'tasks'
   | 'git'
   | 'decisions'
   | 'reviews'
+  | 'artifacts'
   | 'agents'
   | 'activity'
   | 'context'
@@ -16,11 +18,21 @@ export interface RailBadges {
   tasksInProgress: number;
   agentsRunning: number;
   dirtyFiles: number;
+  /** Panels pushed/updated since the user last opened the artifacts capability. */
+  artifactsNew: number;
 }
 
 const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 
 const ICONS: Record<Capability, JSX.Element> = {
+  // Concentric target — the north star. First in the rail on purpose.
+  goal: (
+    <svg viewBox="0 0 20 20" {...S}>
+      <circle cx="10" cy="10" r="6.75" />
+      <circle cx="10" cy="10" r="3" />
+      <path d="M10 10h.01" />
+    </svg>
+  ),
   tasks: (
     <svg viewBox="0 0 20 20" {...S}>
       <path d="M3.5 5.5l1.5 1.5 2.5-3" />
@@ -46,6 +58,15 @@ const ICONS: Record<Capability, JSX.Element> = {
     <svg viewBox="0 0 20 20" {...S}>
       <rect x="4" y="3" width="12" height="14" rx="2" />
       <path d="M7 7.5h6M7 10.5h6M7 13.5h3.5" />
+    </svg>
+  ),
+  // 2×2 tile grid — the pushed-panel registry (galleries, metrics, exhibits).
+  artifacts: (
+    <svg viewBox="0 0 20 20" {...S}>
+      <rect x="3" y="3" width="6" height="6" rx="1.5" />
+      <rect x="11" y="3" width="6" height="6" rx="1.5" />
+      <rect x="3" y="11" width="6" height="6" rx="1.5" />
+      <rect x="11" y="11" width="6" height="6" rx="1.5" />
     </svg>
   ),
   agents: (
@@ -76,10 +97,12 @@ const ICONS: Record<Capability, JSX.Element> = {
 };
 
 const LABELS: Record<Capability, string> = {
+  goal: 'Goal',
   tasks: 'Tasks',
   git: 'Git timeline',
   decisions: 'Decisions',
   reviews: 'Reviews',
+  artifacts: 'Artifacts',
   agents: 'Agents',
   activity: 'Activity',
   context: 'Context',
@@ -102,6 +125,8 @@ export function Rail({
     if (c === 'tasks' && badges.tasksInProgress) return { n: badges.tasksInProgress, tone: 'warn' };
     if (c === 'agents' && badges.agentsRunning) return { n: badges.agentsRunning, tone: 'accent' };
     if (c === 'git' && badges.dirtyFiles) return { n: badges.dirtyFiles, tone: 'dim' };
+    // Amber = attention: the agent pushed/updated panels you haven't looked at.
+    if (c === 'artifacts' && badges.artifactsNew) return { n: badges.artifactsNew, tone: 'warn' };
     return null;
   };
   return (
