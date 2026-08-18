@@ -43,6 +43,14 @@ try {
   await page.locator('.task.open').click();
   await page.locator('.group-toggle').click();
 
+  // 1c — task edit-in-place: the expanded card flips to the subject/detail/status form
+  await page.locator('.task').first().click();
+  await page.locator('.task-edit-btn').click();
+  await page.waitForSelector('.task-edit');
+  await shot('01c-task-edit');
+  await page.locator('.task-edit-row button', { hasText: 'Cancel' }).click(); // discard the draft
+  await page.locator('.task.open').click(); // collapse — later steps expect a closed panel
+
   // 2 — conversation tail: live streaming turn, composer with queued items
   await page.evaluate(() => {
     const c = document.querySelector('.conversation');

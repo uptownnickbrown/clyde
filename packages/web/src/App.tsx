@@ -150,7 +150,7 @@ export default function App() {
               <header className="panel-head">{capabilityLabel(capability)}</header>
               <div className="panel-scroll">
                 {capability === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
-                {capability === 'tasks' && <TasksPanel tasks={state.tasks} delegated={delegated} />}
+                {capability === 'tasks' && <TasksPanel tasks={state.tasks} delegated={delegated} send={send} />}
                 {capability === 'git' && <GitPanel commits={state.commits} />}
                 {capability === 'decisions' && <DecisionsPanel />}
                 {capability === 'reviews' && <ReviewsPanel />}

@@ -170,7 +170,11 @@ export type ClientMessage =
   | { type: 'new_session' }
   /** Switch the agent's model/effort: the server rotates the session in place
    *  (dispose + resume same SDK conversation under the new settings). Idle only. */
-  | { type: 'set_model'; model: string; effort: string };
+  | { type: 'set_model'; model: string; effort: string }
+  /** User-edited a task from the Tasks panel. Only the provided fields change;
+   *  the server applies + persists them and notifies the agent (debounced into
+   *  one note per editing burst, like the Goal panel's save). */
+  | { type: 'edit_task'; taskId: string; subject?: string; status?: TaskItem['status']; detail?: string };
 
 export interface Snapshot {
   projectName: string;

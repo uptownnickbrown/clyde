@@ -216,6 +216,9 @@ export async function startServer(projectRoot: string, port: number, freshSessio
         case 'interrupt':
           session.interrupt();
           break;
+        case 'edit_task':
+          session.editTask(msg);
+          break;
         case 'compact':
           session.requestCompact();
           break;
