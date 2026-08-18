@@ -167,7 +167,10 @@ export type ClientMessage =
   | { type: 'withdraw_queued'; queuedId: string }
   | { type: 'interrupt' }
   | { type: 'compact' }
-  | { type: 'new_session' };
+  | { type: 'new_session' }
+  /** Switch the agent's model/effort: the server rotates the session in place
+   *  (dispose + resume same SDK conversation under the new settings). Idle only. */
+  | { type: 'set_model'; model: string; effort: string };
 
 export interface Snapshot {
   projectName: string;
@@ -182,6 +185,8 @@ export interface Snapshot {
   gitStatus?: GitStatus | null;
   /** Model the agent session runs on (e.g. "claude-fable-5"). */
   model?: string;
+  /** Reasoning effort the session runs at (low | medium | high | xhigh | max). */
+  effort?: string;
 }
 
 export type ServerMessage =

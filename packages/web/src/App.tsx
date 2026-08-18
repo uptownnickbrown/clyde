@@ -182,7 +182,7 @@ export default function App() {
             send={send}
           />
           <WorkBar status={status} since={state.workingSince} tasks={state.tasks} events={state.events} />
-          <Composer status={state.status} queue={state.queue} model={state.model} send={send} />
+          <Composer status={state.status} queue={state.queue} model={state.model} effort={state.effort} send={send} />
         </main>
 
         {rightOpen ? (
