@@ -99,13 +99,13 @@
   {
     "id": "17",
     "subject": "Backfill event-log holes after restarts (lost turn tails)",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "PRIORITY RAISED 2026-08-18: second confirmed loss — the attention-surface acknowledgement prose vanished for the user during the #15 restart window; losing acknowledgements erodes trust in the document. A restart can kill the server before it consumes the tail of the SDK stream: the agent's last messages/tool calls execute but never reach events.jsonl, leaving a hole in the document (observed: a sidebar reply + TaskCreate #16 vanished; user saw it stream live, then it disappeared on reload). Fix: on resume boot, read the SDK's own session transcript (~/.claude/projects/<hash>/<sessionId>.jsonl), find messages after the last logged event, and translate+append them before starting the new query. Also: sequence intentional restarts (like the tasks.json reload touch) behind stream quiescence."
   },
   {
     "id": "18",
     "subject": "Threads metaphor: start threads anywhere, one noun (review items 4+5)",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "Unify comments/threads into one noun: Threads. (a) Start a thread off any top-level message without selecting text — including the user's own messages; (b) keep the select-text affordance as an entry flow that seeds the thread with the highlighted quote; (c) preserve multiple threads per message anchored to different highlighted spans (user relies on this). Needs shared ThreadAnchor to make quote/span optional + server compose/anchor handling + web entry points (hover affordance on messages).",
     "activeForm": "Unifying the threads metaphor"
   },
@@ -120,6 +120,18 @@
     "subject": "Workbench restructure: attention surface right, reference tabs left",
     "status": "pending",
     "detail": "Per the attention-surface ruling (2026-08-18): demote Goal/Scope to a left-rail tab; split \"Panels\" — QA artifact galleries (image-gallery/markdown/metrics) become a left \"Artifacts\" tab, while the right workbench carries only needs-your-eyes-now state: question cycles (#15), review intake (#19), and model-pushed live exhibits with attention badges + dismiss. Conversation stays centered."
+  },
+  {
+    "id": "22",
+    "subject": "Codify subagent orchestration: worktrees, bases, merges, gates",
+    "status": "pending",
+    "detail": "Write the doctrine (CLAUDE.md agent-ops section + standing orders line) and fix the mechanics. Rules to encode: worktree isolation is standard for parallel implementation agents (in-tree allowed only for single web-only/read-only work); Clyde creates worktrees itself with EXPLICIT base = current HEAD (observed 2026-08-18: harness worktrees forked from session-start HEAD, missing a commit landed minutes earlier); one merge at a time, server-src merges last (each restarts the dev server); conflict protocol (coordinator resolves, agents never merge); gate = typecheck + fixture QA + live-drive before the merge commit; worktrees pruned after merge."
+  },
+  {
+    "id": "23",
+    "subject": "Agents panel v2: background-agent lifecycle + worktree state",
+    "status": "pending",
+    "detail": "The R8 panel model (running until tool_result) breaks for background agents — the spawn ack lands instantly, so duration froze at 0s while agents ran (user report 2026-08-18). v2: treat backgrounded dispatches as running until a completion signal; liveness heartbeat (e.g. agent transcript/worktree mtime via a server poll); per-agent worktree column (branch, base sha, ahead-count, merged/pending); duration that actually ticks; surface the agent's final report text expandably. Server likely needs a dispatch_update event."
   },
   {
     "id": "20",

@@ -2,6 +2,7 @@ node_modules/
 dist/
 qa/screenshots/
 .clyde/uploads/
+.claude/worktrees/
 .clyde/logs/
 .clyde/sessions/
 *.tsbuildinfo
