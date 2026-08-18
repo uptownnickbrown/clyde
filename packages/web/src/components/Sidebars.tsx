@@ -204,7 +204,7 @@ export function ActivityPanel({ events }: { events: SessionEvent[] }) {
             <span className="act-time">{e.ts.slice(11, 19)}</span>
             {e.type === 'tool_call' && (
               <>
-                <code>{e.tool}</code>
+                <code>{e.tool.replace(/^mcp__\w+?__/, '')}</code>
                 {e.parentToolUseId && <span className="act-sub">sub</span>}
                 {expanded === e.id && <pre>{JSON.stringify(e.input, null, 2).slice(0, 2000)}</pre>}
               </>

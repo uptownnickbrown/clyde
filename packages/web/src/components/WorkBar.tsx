@@ -31,7 +31,9 @@ export function WorkBar({
         <span className="workbar-dot" />
         Clyde is working · {label}
         {task && <span className="workbar-detail">— {task.activeForm ?? task.subject}</span>}
-        {lastTool?.type === 'tool_call' && <code className="workbar-tool">{lastTool.tool}</code>}
+        {lastTool?.type === 'tool_call' && (
+          <code className="workbar-tool">{lastTool.tool.replace(/^mcp__\w+?__/, '')}</code>
+        )}
       </div>
     );
   }

@@ -305,7 +305,7 @@ function ActivityChip({ items }: { items: ActivityItem[] }) {
             <li key={i.id}>
               {i.type === 'tool_call' ? (
                 <>
-                  <code>{i.tool}</code> {summarizeInput(i.tool, i.input)}
+                  <code>{i.tool.replace(/^mcp__\w+?__/, '')}</code> {summarizeInput(i.tool, i.input)}
                 </>
               ) : (
                 <>
