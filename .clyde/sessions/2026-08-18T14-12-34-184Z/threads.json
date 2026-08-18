@@ -31,5 +31,16 @@
     },
     "status": "open",
     "createdAt": "2026-08-18T14:50:28.281Z"
+  },
+  {
+    "id": "fa73d634-d2ac-44ac-aaba-5112fab9f4c5",
+    "anchor": {
+      "messageId": "03408c19-928d-40c9-875e-c972416b9824",
+      "start": 48,
+      "end": 103,
+      "quote": "only your two Design Vision files, untracked on purpose"
+    },
+    "status": "open",
+    "createdAt": "2026-08-18T15:19:53.506Z"
   }
 ]

@@ -1,56 +1,56 @@
 [
   {
-    "id": "5183cc7c-eaf8-4bf7-95fc-a5954e9f3733",
+    "id": "1",
     "subject": "Build Playwright QA harness (fixture server + screenshot script)",
-    "status": "pending",
+    "status": "completed",
     "detail": "Create qa/fixture-server.mjs (serves built web UI + canned snapshot over /ws + /api endpoints) and qa/screenshot.mjs (Playwright captures of all key UI states into qa/screenshots/). Install playwright."
   },
   {
-    "id": "93a1e70f-fcc6-42e1-83c8-ea935b1331b5",
+    "id": "2",
     "subject": "Push screenshot gallery panel to Clyde UI",
-    "status": "pending",
+    "status": "completed",
     "detail": "Run the QA harness to produce screenshots, then push_panel an image-gallery watching qa/screenshots/*.png."
   },
   {
-    "id": "8ae48386-3637-48a8-ade5-44177ce5a9d5",
+    "id": "3",
     "subject": "Fix UI issues revealed by screenshots",
-    "status": "pending",
+    "status": "completed",
     "detail": "Read the captured PNGs, identify visual bugs/rough edges, fix them, re-run the harness to verify."
   },
   {
-    "id": "5d788b48-f027-46a4-b6bb-37fa4e9b8771",
+    "id": "4",
     "subject": "Server: mirror harness task ids so TaskUpdate matches (needs restart)",
-    "status": "pending",
+    "status": "completed",
     "detail": "agentSession.ts observeToolCall: TaskCreate input has no id (server invents a UUID) but TaskUpdate sends taskId \"1\"/\"2\"… so statuses never update — visible in 09-live-dogfood.png (all tasks ○ despite one in_progress). Fix: parse the TaskCreate tool_result text (\"Task #N created\") to capture the real id, or correlate via toolUseId on the result event. DO NOT apply while a live session runs under tsx watch — editing server src restarts the process and kills the session."
   },
   {
-    "id": "5fb9046d-f077-4f5d-b16c-fde31efd3b4a",
+    "id": "5",
     "subject": "Server: sort gallery files ascending by name (needs restart)",
-    "status": "pending",
+    "status": "completed",
     "detail": "server.ts expandGlob returns results.sort().reverse() so numbered captures display 09→01 in the live panel; qa/fixture-server.mjs already sorts ascending. Align the real server to ascending. Same restart caveat as the task-id fix."
   },
   {
-    "id": "47ba79eb-be02-4e4a-9bae-bf0ff52c00e4",
+    "id": "6",
     "subject": "Composer attachments: drag-drop + paste + file picker with previews",
-    "status": "pending",
+    "status": "completed",
     "detail": "Upload endpoint saves to .clyde/uploads/; send_message carries attachment paths; agent gets \"read these files\" note; Slack-style thumbnail chips below the textarea and in sent bubbles."
   },
   {
-    "id": "3fb16eff-a575-4fda-b73f-6402cf9deac5",
+    "id": "7",
     "subject": "Work bar: prominent working/idle state + elapsed timer above composer",
-    "status": "pending",
+    "status": "completed",
     "detail": "Slim status bar between conversation and composer: pulsing dot + \"working · 2m41s\" ticking timer while a turn runs, green \"idle — ready\" otherwise; replaces the tiny composer status pill."
   },
   {
-    "id": "23e33507-912b-490d-a2ea-866ec6105097",
+    "id": "8",
     "subject": "FIFO message delivery: drain queue before new/idle deliveries",
-    "status": "pending",
+    "status": "completed",
     "detail": "enqueue on idle delivers new items directly, jumping persisted/queued older messages (user saw reordering). Fix: all non-urgent messages join the queue and drain FIFO; steering flushes queued items mid-turn in order before the newest; boot drains leftovers. Urgent deliberately jumps the queue."
   },
   {
-    "id": "3d6b9396-f006-4432-b68a-4bb0c7e01e5d",
+    "id": "9",
     "subject": "Auto-scroll conversation: follow new content unless reading history",
-    "status": "pending",
+    "status": "completed",
     "detail": "Jump to bottom on load; pin-to-bottom follows new events/deltas when already near the bottom; own main-flow sends always scroll; scrolling up unpins so history reading is never yanked."
   },
   {
@@ -89,5 +89,11 @@
     "subject": "Plumb the real AskUserQuestion tool (R10)",
     "status": "pending",
     "detail": "Add the \"ask\" permission rule so canUseTool fires under bypassPermissions; render 1–4 questions as an option card (2–4 options, Other free-text, multiSelect, previewFormat html); return {behavior:\"allow\", updatedInput:{questions, answers}} keyed by exact question text; blocking mode for load-bearing forks, non-blocking experiment otherwise; standing orders: ask early with a recommendation; distill answers into DECISIONS/tasks. Not available in subagents."
+  },
+  {
+    "id": "16",
+    "subject": "UI/UX redesign wave against the Design Vision references",
+    "status": "pending",
+    "detail": "Read \"Clyde UI — Design Vision.md\" + .png (committed at repo root), diff the vision against the current UI using the 15-state QA capture set, propose a gap list ordered by impact, then implement with screenshot verification per state."
   }
 ]
