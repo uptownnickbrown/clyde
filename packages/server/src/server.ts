@@ -196,7 +196,11 @@ export async function startServer(projectRoot: string, port: number, freshSessio
       slog('ws', 'info', `client message: ${msg.type}`);
       switch (msg.type) {
         case 'send_message':
-          session.enqueue(msg.text, { urgent: msg.urgent, attachments: msg.attachments });
+          session.enqueue(msg.text, {
+            urgent: msg.urgent,
+            attachments: msg.attachments,
+            reviewIntake: msg.reviewIntake,
+          });
           break;
         case 'create_thread':
           session.enqueue(msg.text, { urgent: msg.urgent, newThreadAnchor: msg.anchor });

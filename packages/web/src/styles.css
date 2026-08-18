@@ -585,3 +585,44 @@ button.danger { background: none; color: var(--danger); border-color: rgba(229, 
 }
 .queue-item button { background: none; border: none; color: var(--text-dim); }
 .queue-note { font-size: 11px; color: var(--text-faint); }
+
+/* ---------- review intake (the ceremony) ---------- */
+
+.review-toggle {
+  background: none; border: 1px solid transparent; border-radius: 8px; padding: 5px 10px;
+  font-size: 12px; color: var(--text-faint); margin-left: 4px;
+}
+.review-toggle:hover { border-color: var(--border); color: var(--text-dim); background: var(--bg-raised); }
+.review-toggle.armed { color: var(--warn); border-color: var(--warn-soft); background: var(--warn-soft); }
+.composer.review-armed textarea { border-color: var(--warn-soft); }
+.composer.review-armed textarea:focus { border-color: var(--warn); }
+.review-banner {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  background: var(--warn-soft); border: 1px solid var(--warn-soft); border-radius: 8px;
+  padding: 6px 12px; margin-bottom: 8px; font-size: 12px; color: var(--text-dim);
+}
+.review-banner strong { color: var(--warn); font-weight: 650; }
+.review-banner button { background: none; border: none; color: var(--text-dim); padding: 0 2px; }
+.user-body .review-chip {
+  display: inline-block; font-size: 11px; font-family: var(--mono); color: var(--warn);
+  background: var(--warn-soft); border-radius: 6px; padding: 2px 8px; margin-bottom: 8px;
+}
+
+.batch-card .batch-items { list-style: none; margin: 10px 0 8px; padding: 0; }
+.batch-item {
+  display: flex; align-items: baseline; gap: 8px; padding: 3.5px 0; font-size: 12.5px;
+  color: var(--text-dim); border-bottom: 1px solid var(--border-soft);
+}
+.batch-item:last-child { border-bottom: none; }
+.batch-item .bi-subject { flex: 1; min-width: 0; }
+.batch-item .bi-id { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); }
+.batch-item.bi-completed .bi-subject { color: var(--text-faint); }
+.batch-item.bi-declined .bi-subject { color: var(--text-faint); text-decoration: line-through; }
+.batch-item.bi-declined .bi-reason { text-decoration: none; font-style: italic; color: var(--text-faint); }
+.batch-item.bi-declined .task-icon { color: var(--danger); }
+.batch-item.bi-completed .task-icon { color: var(--ok); }
+.batch-item.bi-in_progress .task-icon { color: var(--accent); }
+
+.task.task-declined .task-subject { color: var(--text-faint); text-decoration: line-through; }
+.task.task-declined .task-icon { color: var(--danger); }
+.task-declined-reason { color: var(--danger); font-size: 12px; margin-bottom: 5px; }

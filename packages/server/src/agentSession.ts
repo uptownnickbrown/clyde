@@ -54,9 +54,15 @@ project state lives in on-screen panels. Follow these standing orders:
 - **QA panels**: when you produce visual QA artifacts (screenshots, plots, reports,
   metrics), publish them to the UI with the push_panel tool so the user can judge
   them without digging through files.
-- **Reviews**: batch feedback lives in .clyde/reviews/*.md checklists. Triage every
-  item — accept it into a task, fix it and check it off with the commit sha, or push
-  back with reasons. Never silently drop one; the user verifies checked items.
+- **Reviews**: batch feedback runs the intake ceremony. Messages tagged
+  [Review intake] arrive with the full script — follow it exactly (distill to
+  numbered items → echo them → clarify ambiguities in one AskUserQuestion →
+  confirm scope in one multiSelect AskUserQuestion → file every item as a task
+  with source/batch provenance, declined ones with reasons → annotate the review
+  file). When the user dumps unprompted multi-item feedback WITHOUT review mode,
+  offer the same ceremony (or run it outright when it is unmistakably a batch
+  dump) before diving into fixes. Legacy checklist reviews in .clyde/reviews/*.md
+  still get triaged item-by-item; nothing is ever silently dropped.
 - **Delegate aggressively**: hand substantial, well-scoped implementation work to
   subagents via the Task tool while you coordinate, review their output, and stay
   responsive in the conversation. When delegating a task-list item, put its exact
@@ -318,7 +324,13 @@ export class AgentSession {
 
   enqueue(
     text: string,
-    opts: { urgent?: boolean; threadId?: string; newThreadAnchor?: ThreadAnchor; attachments?: string[] } = {},
+    opts: {
+      urgent?: boolean;
+      threadId?: string;
+      newThreadAnchor?: ThreadAnchor;
+      attachments?: string[];
+      reviewIntake?: boolean;
+    } = {},
   ) {
     let threadId = opts.threadId;
     if (opts.newThreadAnchor) {
@@ -333,11 +345,19 @@ export class AgentSession {
       this.bus.threads(this.threads);
       threadId = thread.id;
     }
+    // Review intake: the dump is provenance — save it verbatim NOW, before any
+    // queueing/delivery/restart can lose it. The batch id rides with the item.
+    let reviewBatch: string | undefined;
+    if (opts.reviewIntake && text.trim()) {
+      reviewBatch = this.store.saveReviewDump(text);
+      slog('session', 'info', 'review intake — dump saved', { batch: reviewBatch });
+    }
     const item: QueuedItem = {
       id: crypto.randomUUID(),
       text,
       threadId,
       attachments: opts.attachments,
+      reviewBatch,
       urgent: opts.urgent ?? false,
       queuedAt: new Date().toISOString(),
     };
@@ -392,9 +412,23 @@ export class AgentSession {
    *  alongside its next tool result, so answers don't wait for the turn boundary. */
   private deliverMidTurn(item: QueuedItem) {
     slog('session', 'info', 'steering: delivered mid-turn', { threadId: item.threadId });
-    this.emit({ type: 'user_message', text: item.text, threadId: item.threadId, attachments: item.attachments });
-    const content = withAttachments(item.threadId ? this.composeThreadMessage(item) : item.text, item.attachments);
+    this.emit({
+      type: 'user_message',
+      text: item.text,
+      threadId: item.threadId,
+      attachments: item.attachments,
+      reviewBatch: item.reviewBatch,
+    });
+    const content = withAttachments(this.composeOutbound(item), item.attachments);
     this.pushInput({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null });
+  }
+
+  /** The message as the model sees it: thread and review-intake deliveries carry
+   *  injected instructions; plain messages pass through. */
+  private composeOutbound(item: QueuedItem): string {
+    if (item.threadId) return this.composeThreadMessage(item);
+    if (item.reviewBatch) return this.composeReviewIntake(item);
+    return item.text;
   }
 
   interrupt() {
@@ -449,8 +483,14 @@ export class AgentSession {
     this.currentDelivery = { turnId, threadId: item.threadId };
     this.threadReplyPending = Boolean(item.threadId);
     this.setStatus('working');
-    this.emit({ type: 'user_message', text: item.text, threadId: item.threadId, attachments: item.attachments });
-    let text = item.threadId ? this.composeThreadMessage(item) : item.text;
+    this.emit({
+      type: 'user_message',
+      text: item.text,
+      threadId: item.threadId,
+      attachments: item.attachments,
+      reviewBatch: item.reviewBatch,
+    });
+    let text = this.composeOutbound(item);
     if (this.needsPrime) {
       // Orientation prime rides with the first message only — silent plumbing,
       // like auto-resume: logged input, not conversation prose.
@@ -504,6 +544,35 @@ export class AgentSession {
         : `The user started a thread on an earlier message in the conversation.\n`) +
       `Their comment:\n${item.text}\n\n` +
       instructions
+    );
+  }
+
+  /** The intake ceremony (see the intake-ceremony + question-card-confirm rulings
+   *  in DECISIONS.md): the dump is already on disk as provenance; the delivered
+   *  message carries the dump plus the ceremony script. */
+  private composeReviewIntake(item: QueuedItem): string {
+    const batch = item.reviewBatch!;
+    return (
+      `[Review intake — batch "${batch}"]\n` +
+      `The user submitted a batch-feedback dump in Review mode. The raw text is already saved ` +
+      `verbatim at .clyde/reviews/${batch}.md — that file is provenance; never edit its Raw dump section.\n\n` +
+      `The dump:\n"""\n${item.text}\n"""\n\n` +
+      `Run the intake ceremony now, before any other work:\n` +
+      `1. Distill the dump into crisp numbered items — split independent points, merge duplicates, ` +
+      `keep the user's sharpest phrasing. Echo the full numbered list as conversation prose so the ` +
+      `user sees the decomposition.\n` +
+      `2. Only if items are genuinely ambiguous (unclear target, two readings, a taste fork): batch ` +
+      `the clarifications into ONE AskUserQuestion call. Skip when nothing is ambiguous.\n` +
+      `3. Confirm scope with ONE AskUserQuestion call: a single multiSelect question listing every ` +
+      `numbered item as an option ("Which items should I take on?"). Unselected items are declined — ` +
+      `capture a short reason for each from the user's phrasing or a follow-up option, never invent one.\n` +
+      `4. File EVERY item by editing .clyde/tasks.json directly (the server watches it live): accepted ` +
+      `items become tasks with source: {review: "${batch}.md", item: <n>}, batch: "${batch}", status ` +
+      `"pending"; declined items get the same provenance with status "declined" and declineReason. ` +
+      `Nothing is silently dropped — the Reviews panel burn-down counts both.\n` +
+      `5. Append an "## Intake result" section to .clyde/reviews/${batch}.md: each numbered item with ` +
+      `→ task #<id>, or → declined: <reason>.\n` +
+      `Then continue normal work, taking up accepted items by priority.`
     );
   }
 

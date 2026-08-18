@@ -161,7 +161,12 @@ export function Conversation({
               <div key={item.event.id} id={`msg-${item.event.id}`} className="msg msg-user">
                 {threadAffordance(item.event.id)}
                 {heads.get(item.event.id) && <SpeakerHead who="user" ts={item.event.ts} />}
-                <div className="user-body">
+                <div className={`user-body${item.event.reviewBatch ? ' review-intake' : ''}`}>
+                  {item.event.reviewBatch && (
+                    <div className="review-chip" title="Saved verbatim to .clyde/reviews/ — distilled into tasks via the intake ceremony">
+                      ☰ Review intake · {item.event.reviewBatch}
+                    </div>
+                  )}
                   <Md>{item.event.text}</Md>
                   {(item.event.attachments?.length ?? 0) > 0 && (
                     <div className="msg-attachments">
