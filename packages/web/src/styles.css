@@ -92,7 +92,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .confirm-new { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-dim); }
 
 /* ---------- columns + rail ---------- */
-.columns { display: flex; flex: 1; min-height: 0; }
+.columns { display: flex; flex: 1; min-height: 0; position: relative; }
 
 .rail {
   width: 46px; flex-shrink: 0; background: var(--bg-panel); border-right: 1px solid var(--border);
@@ -585,3 +585,39 @@ button.danger { background: none; color: var(--danger); border-color: rgba(229, 
 }
 .queue-item button { background: none; border: none; color: var(--text-dim); }
 .queue-note { font-size: 11px; color: var(--text-faint); }
+
+/* ---------- responsive (Design Vision §5) ----------
+   Breakpoints match the matchMedia queries in App.tsx: <1280 medium (one
+   auxiliary surface at a time), <960 narrow (side surfaces become overlay
+   drawers), <680 phone (condensed chrome, conversation-first). The medium
+   mutual-exclusion rule is React state coordination in App.tsx, not CSS —
+   these styles only shape the drawer/phone presentation. */
+.scrim { position: absolute; inset: 0; z-index: 30; background: rgba(5, 7, 10, 0.55); }
+.left-panel.drawer, .right-panel.drawer {
+  position: absolute; top: 0; bottom: 0; z-index: 31;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+}
+.left-panel.drawer { left: 46px; width: min(340px, 82vw); animation: drawer-left 0.16s ease-out; }
+.right-panel.drawer { right: 0; width: min(400px, 88vw); animation: drawer-right 0.16s ease-out; }
+@keyframes drawer-left { from { transform: translateX(-16px); opacity: 0.3; } }
+@keyframes drawer-right { from { transform: translateX(16px); opacity: 0.3; } }
+
+@media (max-width: 959px) {
+  .conversation { padding: 20px 18px; }
+  .mini-gauge { width: 72px; }
+}
+
+@media (max-width: 679px) {
+  /* Conversation-first: drop diagnostics (context gauge, cost readout), keep
+     project · branch · status · Stop · New session, abbreviated. */
+  .mini-gauge, .cost, .brand-name, .tb-label { display: none; }
+  .topbar { padding: 0 10px 0 8px; }
+  .topbar-left, .topbar-right { gap: 8px; }
+  .project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .branch-chip { max-width: 34vw; overflow: hidden; white-space: nowrap; }
+  .conversation { padding: 16px 12px; }
+  .composer-actions { flex-wrap: wrap; gap: 6px; }
+  /* Drawers cover most of the viewport; a sliver of scrim stays clickable. */
+  .left-panel.drawer { width: calc(100vw - 74px); }
+  .right-panel.drawer { width: calc(100vw - 66px); }
+}
