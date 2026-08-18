@@ -5,7 +5,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMessage, ServerMessage, SessionEvent, Snapshot } from '@clyde/shared';
 import { AgentSession, type Broadcast } from './agentSession.js';
 import { ClydeStore } from './store.js';
-import { listCommits } from './git.js';
+import { listCommits, showCommit } from './git.js';
+import { initLogger, slog, tailLog } from './log.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html',
@@ -21,6 +22,8 @@ const MIME: Record<string, string> = {
 export async function startServer(projectRoot: string, port: number, freshSession = false) {
   const resumeId = freshSession ? null : ClydeStore.latestSessionId(projectRoot);
   const store = new ClydeStore(projectRoot, resumeId ?? undefined);
+  initLogger(store.clydeDir);
+  slog('server', 'info', 'starting', { projectRoot, port, resumed: resumeId ?? false });
   const clients = new Set<WebSocket>();
 
   const send = (ws: WebSocket, msg: ServerMessage) => {
@@ -56,6 +59,26 @@ export async function startServer(projectRoot: string, port: number, freshSessio
       }
       res.writeHead(200, { 'content-type': MIME[path.extname(abs)] ?? 'application/octet-stream' });
       fs.createReadStream(abs).pipe(res);
+      return;
+    }
+
+    if (url.pathname === '/api/logs') {
+      const n = Math.min(Number(url.searchParams.get('tail') ?? 200) || 200, 2000);
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end(tailLog(n));
+      return;
+    }
+
+    if (url.pathname === '/api/commit') {
+      const sha = url.searchParams.get('sha') ?? '';
+      if (!/^[0-9a-f]{4,40}$/i.test(sha)) {
+        res.writeHead(400).end('bad sha');
+        return;
+      }
+      void showCommit(projectRoot, sha).then((out) => {
+        res.writeHead(200, { 'content-type': 'text/plain' });
+        res.end(out);
+      });
       return;
     }
 
@@ -102,6 +125,7 @@ export async function startServer(projectRoot: string, port: number, freshSessio
       } catch {
         return;
       }
+      slog('ws', 'info', `client message: ${msg.type}`);
       switch (msg.type) {
         case 'send_message':
           session.enqueue(msg.text, { urgent: msg.urgent });

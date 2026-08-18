@@ -12,6 +12,7 @@ import type {
 } from '@clyde/shared';
 import { ClydeStore } from './store.js';
 import { GitWatcher } from './git.js';
+import { slog } from './log.js';
 
 /** Standing orders appended to the system prompt: the Clyde protocol. */
 const CLYDE_PROTOCOL = `
@@ -31,10 +32,18 @@ project state lives in on-screen panels. Follow these standing orders:
   metrics), publish them to the UI with the push_panel tool so the user can judge
   them without digging through files.
 - **Sidebar replies**: when a user message is marked as a sidebar comment on an
-  earlier excerpt, your FIRST message in response must be a self-contained reply to
-  that comment (it renders as a threaded reply next to the excerpt, not in the main
-  flow). Afterwards, continue main-line work in subsequent messages.
+  earlier excerpt, it includes a token like [[sidebar:ab12cd34]]. Reply directly and
+  self-containedly, beginning every message that belongs to that reply with that
+  exact token on its first line — the UI strips it and renders those messages as a
+  thread attached to the excerpt. You may send several such messages, and multiple
+  sidebars can be in flight at once: the token's id says which thread each message
+  belongs to. Messages without a token go to the main conversation flow; use those
+  to continue main-line work.
 `;
+
+/** Per-thread reply token; the id tells the server which thread to route to. */
+const sidebarToken = (threadId: string) => `[[sidebar:${threadId.slice(0, 8)}]]`;
+const SIDEBAR_RE = /^\s*\[\[sidebar(?::([a-zA-Z0-9-]{1,36}))?\]\]\s*/;
 
 interface Delivery {
   turnId: string;
@@ -73,6 +82,7 @@ export class AgentSession {
     this.panels = store.loadPanels();
     this.git = new GitWatcher(store.projectRoot, (commit) => {
       commit.messageId = this.lastAssistantMessageId ?? undefined;
+      slog('git', 'info', 'new commit', { sha: commit.sha.slice(0, 7), subject: commit.subject });
       this.emit({ type: 'commit', commit });
     });
   }
@@ -146,12 +156,14 @@ export class AgentSession {
       queuedAt: new Date().toISOString(),
     };
     if (this.status === 'working' && !item.urgent) {
+      slog('session', 'info', 'queued (agent working)', { queueLen: this.userQueue.length + 1, threadId: item.threadId });
       this.userQueue.push(item);
       this.bus.queue(this.userQueue);
       return;
     }
     if (this.status === 'working' && item.urgent) {
-      void this.q?.interrupt().catch(() => {});
+      slog('session', 'info', 'urgent: interrupting in-flight turn');
+      void this.q?.interrupt().catch((err) => slog('session', 'warn', 'interrupt failed', { err: String(err) }));
     }
     this.deliver(item);
   }
@@ -174,13 +186,14 @@ export class AgentSession {
     this.enqueue(
       `[Sidebar resolved] The user marked the sidebar thread on «${truncate(thread.anchor.quote, 120)}» as resolved. ` +
         `If it settled or changed a decision, append it to .clyde/DECISIONS.md now; otherwise no action needed. ` +
-        `Reply briefly, then continue your work.`,
+        `Reply briefly (begin the reply with ${sidebarToken(thread.id)}), then continue your work.`,
       { threadId },
     );
   }
 
   private deliver(item: QueuedItem) {
     const turnId = crypto.randomUUID();
+    slog('session', 'info', 'delivering turn', { turnId: turnId.slice(0, 8), threadId: item.threadId, urgent: item.urgent });
     this.currentDelivery = { turnId, threadId: item.threadId };
     this.threadReplyPending = Boolean(item.threadId);
     this.setStatus('working');
@@ -202,10 +215,12 @@ export class AgentSession {
       `The user selected this excerpt from one of your earlier messages:\n` +
       `"""\n${thread.anchor.quote}\n"""\n` +
       `Their comment:\n${item.text}\n\n` +
-      `Respond to this comment directly and self-containedly in your next message — it will be ` +
-      `displayed as a threaded reply attached to that excerpt, not in the main conversation flow. ` +
-      `If your reply changes a prior decision or plan, say so explicitly and record it in ` +
-      `.clyde/DECISIONS.md. After that reply, continue any in-progress main-line work.`
+      `Respond to this comment directly and self-containedly. Begin every message that belongs to ` +
+      `your reply with the exact token ${sidebarToken(thread.id)} on its first line — those messages render ` +
+      `as a thread attached to the excerpt, not in the main flow, and you may send several. ` +
+      `Messages without the token go to the main conversation. If your reply changes a prior ` +
+      `decision or plan, say so explicitly and record it in .clyde/DECISIONS.md. Afterwards, ` +
+      `continue any in-progress main-line work.`
     );
   }
 
@@ -218,13 +233,18 @@ export class AgentSession {
         this.translate(raw as any);
       }
     } catch (err) {
+      slog('session', 'error', 'SDK stream threw', { err: String(err) });
       this.emit({ type: 'error', message: String(err) });
     }
+    slog('session', 'warn', 'SDK stream ended');
     this.setStatus('disconnected');
   }
 
   private translate(msg: any) {
     const turnId = this.currentDelivery?.turnId ?? 'unattributed';
+    slog('sdk', 'debug', `message: ${msg.type}${msg.subtype ? `/${msg.subtype}` : ''}`, {
+      parent: msg.parent_tool_use_id ?? undefined,
+    });
     switch (msg.type) {
       case 'system': {
         if (msg.subtype === 'init') {
@@ -256,9 +276,18 @@ export class AgentSession {
         const content = msg.message?.content ?? [];
         for (const block of content) {
           if (block.type === 'text' && !parent && block.text.trim()) {
-            const threadId = this.threadReplyPending ? this.currentDelivery?.threadId : undefined;
-            this.threadReplyPending = false;
-            const e = this.emit({ type: 'assistant_message', markdown: block.text, turnId, threadId });
+            let markdown: string = block.text;
+            let threadId: string | undefined;
+            const marker = SIDEBAR_RE.exec(markdown);
+            if (marker) {
+              markdown = markdown.slice(marker[0].length);
+              const shortId = marker[1];
+              threadId = shortId
+                ? (this.threads.find((t) => t.id.startsWith(shortId))?.id ?? this.currentDelivery?.threadId)
+                : this.currentDelivery?.threadId;
+              slog('session', 'info', 'sidebar-marked message routed to thread', { shortId, threadId });
+            }
+            const e = this.emit({ type: 'assistant_message', markdown, turnId, threadId });
             this.lastAssistantMessageId = e.id;
           } else if (block.type === 'tool_use') {
             this.emit({
@@ -300,6 +329,12 @@ export class AgentSession {
         break;
       }
       case 'result': {
+        slog('session', 'info', 'turn complete', {
+          turnId: turnId.slice(0, 8),
+          subtype: msg.subtype,
+          costUsd: msg.total_cost_usd,
+          queued: this.userQueue.length,
+        });
         this.emit({ type: 'turn_complete', turnId });
         if (typeof msg.total_cost_usd === 'number') {
           this.emit({ type: 'usage', costUsd: msg.total_cost_usd });

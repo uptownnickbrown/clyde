@@ -37,6 +37,19 @@ function parseLog(stdout: string): CommitInfo[] {
   return commits;
 }
 
+/** Full detail for one commit (message, stat, patch) for the UI's expand view. */
+export async function showCommit(projectRoot: string, sha: string): Promise<string> {
+  try {
+    const { stdout } = await run('git', ['show', sha, '--stat', '--patch', '--no-color'], {
+      cwd: projectRoot,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    return stdout.length > 200_000 ? stdout.slice(0, 200_000) + '\n… (truncated)' : stdout;
+  } catch (err) {
+    return `error: ${String(err)}`;
+  }
+}
+
 /** Polls git for new commits and reports them, so the server can link each new
  *  commit to the conversation position that produced it. */
 export class GitWatcher {

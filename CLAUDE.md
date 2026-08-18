@@ -23,3 +23,4 @@ npm-workspaces monorepo, TypeScript throughout:
 - Commit at logical units of completed work.
 - `CLYDE_MODEL` env overrides the agent model (smoke tests use `haiku`); `CLYDE_PORT` overrides the port; `CLYDE_EFFORT` overrides reasoning effort (default xhigh).
 - The server resumes the latest session (event log + SDK `resume`) on boot — server restarts, including tsx-watch restarts from editing server code, are survivable. Pass `--new` for a fresh session.
+- Server diagnostics: structured JSONL at `.clyde/logs/server.jsonl` (gitignored); tail via `GET /api/logs?tail=N`. Commit detail via `GET /api/commit?sha=<sha>`. Read the log when debugging Clyde itself.
