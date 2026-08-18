@@ -193,6 +193,14 @@ export function Conversation({
                 {heads.get(item.event.id) && <SpeakerHead who="clyde" ts={item.event.ts} />}
                 <div className="msg-assistant" onMouseUp={(e) => onMouseUp(e, item.event.id)}>
                   <Md>{item.event.markdown}</Md>
+                  {item.event.provisional && (
+                    <span
+                      className="provisional-chip"
+                      title="Recovered from the stream journal after a crash — the tail may be missing."
+                    >
+                      recovered from stream
+                    </span>
+                  )}
                 </div>
                 {threadStart(item.event.id, item.event.markdown)}
                 {threadCards(item.event.id)}

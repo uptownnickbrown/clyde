@@ -69,6 +69,52 @@ export class ClydeStore {
       .map((line) => JSON.parse(line) as SessionEvent);
   }
 
+  // ---------- delta journal (last-resort crash recovery for streamed prose) ----------
+  // Streamed text deltas already on the user's screen are appended here as they
+  // arrive; the file is deleted the moment the finished block lands durably in
+  // events.jsonl. A journal that survives to boot therefore marks prose that died
+  // in BOTH the event log and the SDK CLI's unflushed transcript — the one loss
+  // window resume-boot backfill cannot repair (verified loss 2026-08-18).
+
+  /** Best-effort append — plain appendFileSync, no fsync (cheap is the point), and
+   *  never throws: the journal must never break live streaming. */
+  appendDelta(turnId: string, text: string) {
+    try {
+      fs.appendFileSync(this.deltaPath(turnId), text);
+    } catch {
+      /* best-effort by design */
+    }
+  }
+
+  /** The turn's streamed text is durable (or the turn ended) — drop its journal. */
+  clearDeltas(turnId: string) {
+    try {
+      fs.rmSync(this.deltaPath(turnId), { force: true });
+    } catch {
+      /* best-effort by design */
+    }
+  }
+
+  /** Leftover journals from a crashed process — boot-time recovery input. */
+  listDeltaJournals(): { turnId: string; text: string }[] {
+    const out: { turnId: string; text: string }[] = [];
+    for (const f of fs.readdirSync(this.sessionDir)) {
+      const m = /^deltas-(.+)\.log$/.exec(f);
+      if (!m) continue;
+      try {
+        out.push({ turnId: m[1], text: fs.readFileSync(path.join(this.sessionDir, f), 'utf8') });
+      } catch {
+        /* unreadable journal — recovery is best-effort */
+      }
+    }
+    return out;
+  }
+
+  private deltaPath(turnId: string): string {
+    // turnId is a uuid or 'unattributed', but it becomes a filename — sanitize anyway.
+    return path.join(this.sessionDir, `deltas-${turnId.replace(/[^a-zA-Z0-9-]/g, '_')}.log`);
+  }
+
   loadQueue(): QueuedItem[] {
     return this.readJson<QueuedItem[]>(path.join(this.sessionDir, 'queue.json')) ?? [];
   }

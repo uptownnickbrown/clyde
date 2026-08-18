@@ -160,6 +160,41 @@ export interface BackfillPlan {
   bailed?: string;
 }
 
+// ---------- delta-journal recovery (the last loss window) ----------
+//
+// Streamed text deltas are journaled to <sessionDir>/deltas-<turnId>.log as they
+// arrive (ClydeStore.appendDelta) and the journal is cleared the moment the
+// finished block lands in events.jsonl. A journal that survives to boot marks
+// prose the user watched stream that BOTH the event log and the CLI transcript
+// missed — verified loss 2026-08-18: an API response sharing a message with a
+// restart-triggering call dies unflushed everywhere. Coverage rule: the CLI-
+// transcript backfill may already have recovered the real message, and journal
+// text is always a prefix of the completed block (a finished block clears its
+// journal), so an assistant_message whose markdown contains the journal's first
+// 80 trimmed characters counts as covered. Anything uncovered is emitted as a
+// provisional assistant_message — better a tail-less recovery than silence.
+
+export interface JournalRecoveryPlan {
+  emit: { turnId: string; markdown: string }[];
+}
+
+export function planJournalRecovery(opts: {
+  events: SessionEvent[];
+  journals: { turnId: string; text: string }[];
+}): JournalRecoveryPlan {
+  const plan: JournalRecoveryPlan = { emit: [] };
+  for (const j of opts.journals) {
+    // Sidebar plumbing never renders: logged replies are stored marker-stripped,
+    // so strip before probing (and never show the marker in recovered prose).
+    const text = j.text.replace(SIDEBAR_RE, '').trim();
+    if (!text) continue;
+    const probe = text.slice(0, 80);
+    const covered = opts.events.some((e) => e.type === 'assistant_message' && e.markdown.includes(probe));
+    if (!covered) plan.emit.push({ turnId: j.turnId, markdown: text });
+  }
+  return plan;
+}
+
 export function planBackfill(opts: {
   events: SessionEvent[];
   /** Raw contents of the CLI transcript .jsonl. */

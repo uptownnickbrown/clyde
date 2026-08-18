@@ -413,6 +413,12 @@ button.linklike:disabled { opacity: 0.55; cursor: default; }
 .cursor { color: var(--accent); animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
+/* Crash-recovered prose (delta-journal boot recovery) — faint, not alarming. */
+.provisional-chip {
+  display: inline-block; margin-top: 4px; font-size: 10px; background: var(--warn-soft);
+  color: var(--warn); border-radius: 8px; padding: 1px 7px; white-space: nowrap; opacity: 0.85;
+}
+
 .msg-attachments { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
 .msg-attachments img { height: 120px; border-radius: 8px; border: 1px solid var(--border); display: block; }
 

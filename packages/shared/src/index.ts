@@ -92,7 +92,16 @@ export interface CommitInfo {
 export type SessionEventBody =
   | { type: 'session_started'; sdkSessionId?: string; model: string; cwd: string }
   | { type: 'user_message'; text: string; threadId?: string; attachments?: string[] }
-  | { type: 'assistant_message'; markdown: string; turnId: string; threadId?: string }
+  | {
+      type: 'assistant_message';
+      markdown: string;
+      turnId: string;
+      threadId?: string;
+      /** Recovered from the stream-delta journal after a crash: the prose streamed
+       *  to the user but never landed in events.jsonl or the CLI transcript. May be
+       *  missing its tail. */
+      provisional?: boolean;
+    }
   | {
       type: 'tool_call';
       toolUseId: string;

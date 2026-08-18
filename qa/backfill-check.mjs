@@ -1,6 +1,7 @@
 // Offline check for the resume-boot backfill planner (task #17): given an events
 // log with a hole at the tail and the SDK CLI's own transcript, the planner must
-// recover exactly the lost events — and nothing else. Deterministic; no live
+// recover exactly the lost events — and nothing else. Also covers the delta-journal
+// recovery planner (task #24), the layer under backfill. Deterministic; no live
 // session, no ports, no writes outside a temp dir (none at all, in fact).
 //
 // Usage:  npm run typecheck && node qa/backfill-check.mjs
@@ -16,9 +17,9 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(HERE, '../packages/server/dist/backfill.js');
 
-let planBackfill, transcriptPathFor, parseSidebarMarker, parseTaskNotifications;
+let planBackfill, planJournalRecovery, transcriptPathFor, parseSidebarMarker, parseTaskNotifications;
 try {
-  ({ planBackfill, transcriptPathFor, parseSidebarMarker, parseTaskNotifications } = await import(DIST));
+  ({ planBackfill, planJournalRecovery, transcriptPathFor, parseSidebarMarker, parseTaskNotifications } = await import(DIST));
 } catch (err) {
   console.error(`Cannot import ${DIST} — build first: npm run typecheck (or npm run build)`);
   console.error(String(err));
@@ -263,6 +264,66 @@ console.log('11. task-notification backfill');
   );
   check('failed notification parsed without a result', failed.length === 1 && failed[0].status === 'failed' && failed[0].result === undefined, failed);
   check('missing tool-use-id -> dropped', parseTaskNotifications('<task-notification>\n<status>completed</status>').length === 0);
+}
+
+// ---------- 12. delta-journal recovery (task #24 — the last loss window) ----------
+// Streamed deltas journaled to deltas-<turnId>.log that survive to boot are prose
+// the user watched stream but BOTH events.jsonl and the CLI transcript missed —
+// unless the CLI-transcript backfill already recovered the real message, detected
+// by its first 80 trimmed characters appearing in a logged assistant_message.
+console.log('12. delta-journal recovery');
+{
+  const J = (turnId, text) => ({ turnId, text });
+  const LOST =
+    'This prose streamed to the screen but never reached events.jsonl or the CLI transcript — the verified last loss window.';
+
+  // (a) no covering event -> provisional emit, verbatim, on the journal's turn
+  let plan = planJournalRecovery({ events: baseEvents, journals: [J(TURN, LOST)] });
+  check(
+    'uncovered journal -> emit on its turn',
+    plan.emit.length === 1 && plan.emit[0].turnId === TURN && plan.emit[0].markdown === LOST,
+    plan.emit,
+  );
+
+  // (b) covered: a logged assistant_message contains the journal's first 80 chars
+  // (the backfilled real message has the tail the journal never saw) -> no emit
+  const recovered = ev(
+    { type: 'assistant_message', markdown: LOST + ' Plus the tail only the completed block carries.', turnId: TURN },
+    T('0:05'),
+  );
+  plan = planJournalRecovery({ events: [...baseEvents, recovered], journals: [J(TURN, LOST)] });
+  check('covered journal (80-char prefix in logged markdown) -> no emit', plan.emit.length === 0, plan.emit);
+
+  // (c) empty or whitespace-only journal -> nothing worth resurrecting
+  plan = planJournalRecovery({ events: baseEvents, journals: [J(TURN, '  \n\t  '), J('turn-bbbb', '')] });
+  check('empty/whitespace journals -> no emit', plan.emit.length === 0, plan.emit);
+
+  // (d) multiple journals judged independently: one covered, one not
+  plan = planJournalRecovery({
+    events: [...baseEvents, recovered],
+    journals: [J(TURN, LOST), J('turn-bbbb', 'Different prose lost from another turn entirely.')],
+  });
+  check(
+    'multiple journals judged independently',
+    plan.emit.length === 1 && plan.emit[0].turnId === 'turn-bbbb',
+    plan.emit,
+  );
+
+  // (e) sidebar plumbing never renders: the marker is stripped before probing AND
+  // from the recovered prose (logged replies are stored marker-stripped too)
+  const side = '[[sidebar:ab12cd34]] Good catch — fixing the offset now.';
+  plan = planJournalRecovery({ events: baseEvents, journals: [J(TURN, side)] });
+  check(
+    'sidebar marker stripped from recovered prose',
+    plan.emit.length === 1 && plan.emit[0].markdown === 'Good catch — fixing the offset now.',
+    plan.emit,
+  );
+  const loggedReply = ev(
+    { type: 'assistant_message', markdown: 'Good catch — fixing the offset now.', turnId: TURN, threadId: 'th-1' },
+    T('0:05'),
+  );
+  plan = planJournalRecovery({ events: [...baseEvents, loggedReply], journals: [J(TURN, side)] });
+  check('marker-stripped probe matches the marker-stripped log -> no emit', plan.emit.length === 0, plan.emit);
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll backfill checks passed.');

@@ -20,6 +20,7 @@ import {
   parseSidebarMarker,
   parseTaskNotifications,
   planBackfill,
+  planJournalRecovery,
   previewOf,
   transcriptPathFor,
   truncate,
@@ -152,6 +153,10 @@ export class AgentSession {
     // never consumed get appended from the CLI's own transcript, so the snapshot is
     // whole and maybeAutoResume below judges the true tail.
     if (resumeSdkSessionId) this.backfillFromTranscript(resumeSdkSessionId);
+    // Then the delta journal — the layer under backfill. Runs on every boot, not
+    // just resumes: a crash before session_started was ever logged leaves the same
+    // session dir with journals but no sdk id to resume by.
+    this.recoverDeltaJournals();
     void this.git.start();
     this.watchTasksFile();
     const bootEvents = this.store.loadEvents();
@@ -311,6 +316,36 @@ export class AgentSession {
       }
     } catch (err) {
       slog('session', 'error', 'backfill failed — continuing boot without it', { err: String(err) });
+    }
+  }
+
+  /** The layer under backfill: streamed prose journaled per-delta (see
+   *  ClydeStore.appendDelta) that BOTH the event log and the CLI transcript
+   *  missed gets emitted as a provisional assistant_message — better a tail-less
+   *  recovery than prose the user watched stream and then lost. Never lets a bad
+   *  journal take the boot down. */
+  private recoverDeltaJournals() {
+    try {
+      const journals = this.store.listDeltaJournals();
+      if (!journals.length) return;
+      const plan = planJournalRecovery({ events: this.store.loadEvents(), journals });
+      for (const p of plan.emit) {
+        slog('session', 'warn', 'journal recovery: provisional message emitted', {
+          turnId: p.turnId.slice(0, 8),
+          chars: p.markdown.length,
+        });
+        const e = this.emit({
+          type: 'assistant_message',
+          markdown: p.markdown,
+          turnId: p.turnId,
+          provisional: true,
+        });
+        this.lastAssistantMessageId = e.id;
+      }
+      // Covered or emitted, every journal is now spent — one recovery per crash.
+      for (const j of journals) this.store.clearDeltas(j.turnId);
+    } catch (err) {
+      slog('session', 'error', 'journal recovery failed — continuing boot without it', { err: String(err) });
     }
   }
 
@@ -613,6 +648,11 @@ export class AgentSession {
         const ev = msg.event;
         if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
           this.bus.delta(turnId, ev.delta.text);
+          // Journal every delta as it arrives (deltas come at human reading speed —
+          // per-delta appendFileSync is cheap and simple beats buffered): if this
+          // process dies before the block lands in events.jsonl AND the CLI never
+          // flushed its transcript, boot recovers the prose from this journal.
+          this.store.appendDelta(turnId, ev.delta.text);
         }
         break;
       }
@@ -629,6 +669,9 @@ export class AgentSession {
             if (hadMarker) slog('session', 'info', 'sidebar-marked message routed to thread', { threadId });
             const e = this.emit({ type: 'assistant_message', markdown, turnId, threadId }, { sdkUuid: msg.uuid });
             this.lastAssistantMessageId = e.id;
+            // The streamed text is durable in events.jsonl now — reset the turn's
+            // delta journal (later blocks in this turn re-accumulate).
+            this.store.clearDeltas(turnId);
           } else if (block.type === 'tool_use') {
             this.emit(
               {
@@ -713,6 +756,9 @@ export class AgentSession {
           queued: this.userQueue.length,
         });
         this.emit({ type: 'turn_complete', turnId }, { sdkUuid: msg.uuid });
+        // Turn over — any journaled deltas that never became a block (interrupt,
+        // error) are not recoverable prose worth resurrecting on the next boot.
+        this.store.clearDeltas(turnId);
         if (typeof msg.total_cost_usd === 'number') {
           // Baseline + per-process cumulative = true session total across restarts.
           this.emit({ type: 'usage', costUsd: this.costBaseline + msg.total_cost_usd });
