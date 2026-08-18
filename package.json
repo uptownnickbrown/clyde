@@ -1,0 +1,22 @@
+{
+  "name": "clyde",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Clyde — a conversation-centric IDE for agent-driven builds",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@clyde/server & npm run dev --workspace=@clyde/web & wait",
+    "build": "npm run build --workspace=@clyde/shared && npm run build --workspace=@clyde/web && npm run build --workspace=@clyde/server",
+    "typecheck": "tsc -b packages/shared packages/server packages/web"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.21.5": true
+  }
+}

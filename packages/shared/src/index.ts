@@ -1,0 +1,126 @@
+// Clyde wire protocol + domain types — the contract between server and web UI.
+// Everything persisted to .clyde/ or sent over the WebSocket is defined here.
+
+export type AgentStatus = 'idle' | 'working' | 'disconnected';
+
+// ---------- Threads (span comments) ----------
+
+/** Anchors are stable because messages are immutable: offsets index into the
+ *  final markdown of the anchored assistant message. */
+export interface ThreadAnchor {
+  messageId: string;
+  start: number;
+  end: number;
+  quote: string;
+}
+
+export interface Thread {
+  id: string;
+  anchor: ThreadAnchor;
+  status: 'open' | 'resolved';
+  createdAt: string;
+}
+
+// ---------- Tasks ----------
+
+export interface TaskItem {
+  id: string;
+  subject: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  detail?: string;
+}
+
+// ---------- Panels (agent-pushed UI) ----------
+
+export type PanelSpec =
+  | { id: string; kind: 'image-gallery'; title: string; glob: string }
+  | { id: string; kind: 'markdown'; title: string; path: string }
+  | { id: string; kind: 'metrics'; title: string; path: string }
+  | { id: string; kind: 'iframe'; title: string; url: string };
+
+// ---------- Git ----------
+
+export interface CommitInfo {
+  sha: string;
+  subject: string;
+  ts: string;
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+  /** Last assistant message id at commit time — the commit↔conversation link. */
+  messageId?: string;
+}
+
+// ---------- Session events (append-only log; the UI renders from these) ----------
+
+export type SessionEventBody =
+  | { type: 'session_started'; sdkSessionId?: string; model: string; cwd: string }
+  | { type: 'user_message'; text: string; threadId?: string }
+  | { type: 'assistant_message'; markdown: string; turnId: string; threadId?: string }
+  | {
+      type: 'tool_call';
+      toolUseId: string;
+      tool: string;
+      input: unknown;
+      turnId: string;
+      parentToolUseId?: string;
+    }
+  | { type: 'tool_result'; toolUseId: string; ok: boolean; preview?: string }
+  | {
+      type: 'dispatch';
+      toolUseId: string;
+      agentType?: string;
+      description?: string;
+      prompt: string;
+    }
+  | { type: 'tasks_updated'; tasks: TaskItem[] }
+  | { type: 'commit'; commit: CommitInfo }
+  | { type: 'compaction'; preTokens?: number; trigger?: string }
+  | { type: 'usage'; contextTokens?: number; costUsd?: number }
+  | { type: 'panels_updated'; panels: PanelSpec[] }
+  | { type: 'turn_complete'; turnId: string }
+  | { type: 'status'; status: AgentStatus }
+  | { type: 'error'; message: string };
+
+export type SessionEvent = { id: string; ts: string } & SessionEventBody;
+
+// ---------- Queued user input (queue + urgent override) ----------
+
+export interface QueuedItem {
+  id: string;
+  text: string;
+  threadId?: string;
+  /** Present when this item creates a new thread on delivery. */
+  newThreadAnchor?: ThreadAnchor;
+  urgent: boolean;
+  queuedAt: string;
+}
+
+// ---------- WebSocket protocol ----------
+
+export type ClientMessage =
+  | { type: 'send_message'; text: string; urgent?: boolean }
+  | { type: 'create_thread'; anchor: ThreadAnchor; text: string; urgent?: boolean }
+  | { type: 'thread_reply'; threadId: string; text: string; urgent?: boolean }
+  | { type: 'resolve_thread'; threadId: string }
+  | { type: 'withdraw_queued'; queuedId: string }
+  | { type: 'interrupt' };
+
+export interface Snapshot {
+  projectName: string;
+  goalMarkdown: string | null;
+  events: SessionEvent[];
+  threads: Thread[];
+  queue: QueuedItem[];
+  panels: PanelSpec[];
+  tasks: TaskItem[];
+  commits: CommitInfo[];
+  status: AgentStatus;
+}
+
+export type ServerMessage =
+  | { type: 'hello'; snapshot: Snapshot }
+  | { type: 'event'; event: SessionEvent }
+  | { type: 'delta'; turnId: string; text: string }
+  | { type: 'queue'; items: QueuedItem[] }
+  | { type: 'threads'; threads: Thread[] };

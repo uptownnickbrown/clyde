@@ -1,0 +1,78 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import type { SessionEvent, SessionEventBody, Thread, TaskItem, PanelSpec } from '@clyde/shared';
+
+/** All Clyde state lives as plain files under <project>/.clyde/ — committed with
+ *  the work, readable and writable by the agent, watched by the UI. */
+export class ClydeStore {
+  readonly clydeDir: string;
+  readonly sessionId: string;
+  readonly sessionDir: string;
+  private eventsPath: string;
+  private threadsPath: string;
+  private tasksPath: string;
+  private panelsPath: string;
+
+  constructor(readonly projectRoot: string, sessionId?: string) {
+    this.clydeDir = path.join(projectRoot, '.clyde');
+    this.sessionId = sessionId ?? new Date().toISOString().replace(/[:.]/g, '-');
+    this.sessionDir = path.join(this.clydeDir, 'sessions', this.sessionId);
+    fs.mkdirSync(this.sessionDir, { recursive: true });
+    this.eventsPath = path.join(this.sessionDir, 'events.jsonl');
+    this.threadsPath = path.join(this.sessionDir, 'threads.json');
+    this.tasksPath = path.join(this.clydeDir, 'tasks.json');
+    this.panelsPath = path.join(this.clydeDir, 'panels.json');
+  }
+
+  appendEvent(body: SessionEventBody): SessionEvent {
+    const event: SessionEvent = { id: crypto.randomUUID(), ts: new Date().toISOString(), ...body };
+    fs.appendFileSync(this.eventsPath, JSON.stringify(event) + '\n');
+    return event;
+  }
+
+  loadEvents(): SessionEvent[] {
+    if (!fs.existsSync(this.eventsPath)) return [];
+    return fs
+      .readFileSync(this.eventsPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as SessionEvent);
+  }
+
+  loadThreads(): Thread[] {
+    return this.readJson<Thread[]>(this.threadsPath) ?? [];
+  }
+
+  saveThreads(threads: Thread[]) {
+    fs.writeFileSync(this.threadsPath, JSON.stringify(threads, null, 2));
+  }
+
+  loadTasks(): TaskItem[] {
+    return this.readJson<TaskItem[]>(this.tasksPath) ?? [];
+  }
+
+  saveTasks(tasks: TaskItem[]) {
+    fs.writeFileSync(this.tasksPath, JSON.stringify(tasks, null, 2));
+  }
+
+  loadPanels(): PanelSpec[] {
+    return this.readJson<PanelSpec[]>(this.panelsPath) ?? [];
+  }
+
+  savePanels(panels: PanelSpec[]) {
+    fs.writeFileSync(this.panelsPath, JSON.stringify(panels, null, 2));
+  }
+
+  readGoal(): string | null {
+    const goalPath = path.join(this.projectRoot, 'SCOPE.md');
+    return fs.existsSync(goalPath) ? fs.readFileSync(goalPath, 'utf8') : null;
+  }
+
+  private readJson<T>(p: string): T | null {
+    try {
+      return JSON.parse(fs.readFileSync(p, 'utf8')) as T;
+    } catch {
+      return null;
+    }
+  }
+}
