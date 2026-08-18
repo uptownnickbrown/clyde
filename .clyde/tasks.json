@@ -99,14 +99,14 @@
   {
     "id": "17",
     "subject": "Backfill event-log holes after restarts (lost turn tails)",
-    "status": "in_progress",
-    "detail": "PRIORITY RAISED 2026-08-18: second confirmed loss — the attention-surface acknowledgement prose vanished for the user during the #15 restart window; losing acknowledgements erodes trust in the document. A restart can kill the server before it consumes the tail of the SDK stream: the agent's last messages/tool calls execute but never reach events.jsonl, leaving a hole in the document (observed: a sidebar reply + TaskCreate #16 vanished; user saw it stream live, then it disappeared on reload). Fix: on resume boot, read the SDK's own session transcript (~/.claude/projects/<hash>/<sessionId>.jsonl), find messages after the last logged event, and translate+append them before starting the new query. Also: sequence intentional restarts (like the tasks.json reload touch) behind stream quiescence."
+    "status": "completed",
+    "detail": "PRIORITY RAISED 2026-08-18: second confirmed loss — the attention-surface acknowledgement prose vanished for the user during the #15 restart window; losing acknowledgements erodes trust in the document. A restart can kill the server before it consumes the tail of the SDK stream: the agent's last messages/tool calls execute but never reach events.jsonl, leaving a hole in the document (observed: a sidebar reply + TaskCreate #16 vanished; user saw it stream live, then it disappeared on reload). Fix: on resume boot, read the SDK's own session transcript (~/.claude/projects/<hash>/<sessionId>.jsonl), find messages after the last logged event, and translate+append them before starting the new query. Also: sequence intentional restarts (like the tasks.json reload touch) behind stream quiescence. DONE (merged 4215a68): backfill.ts plans from the CLI transcript on resume boot; sdkUuid stamped on all live events; 25 offline checks in qa/backfill-check.mjs (npm run qa:backfill). Proved live on its first boot — recovered the merge-train narrative the crash swallowed. Left out: quiescence-sequenced intentional restarts; mid-log holes older than the tail are unrecoverable by design."
   },
   {
     "id": "18",
     "subject": "Threads metaphor: start threads anywhere, one noun (review items 4+5)",
-    "status": "in_progress",
-    "detail": "Unify comments/threads into one noun: Threads. (a) Start a thread off any top-level message without selecting text — including the user's own messages; (b) keep the select-text affordance as an entry flow that seeds the thread with the highlighted quote; (c) preserve multiple threads per message anchored to different highlighted spans (user relies on this). Needs shared ThreadAnchor to make quote/span optional + server compose/anchor handling + web entry points (hover affordance on messages).",
+    "status": "completed",
+    "detail": "Unify comments/threads into one noun: Threads. (a) Start a thread off any top-level message without selecting text — including the user's own messages; (b) keep the select-text affordance as an entry flow that seeds the thread with the highlighted quote; (c) preserve multiple threads per message anchored to different highlighted spans (user relies on this). Needs shared ThreadAnchor to make quote/span optional + server compose/anchor handling + web entry points (hover affordance on messages). DONE (merged 4215a68): ThreadAnchor span fields optional (quote present ⇔ span thread); hover ⊕ Thread affordance on every top-level message incl. the user's own; quoteless injection references the anchored message with a 200-char excerpt; multi-span threads per message preserved untouched; 04b-message-thread QA capture.",
     "activeForm": "Unifying the threads metaphor"
   },
   {
