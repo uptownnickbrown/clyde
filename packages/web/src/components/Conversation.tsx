@@ -202,6 +202,11 @@ function deriveItems(events: SessionEvent[]) {
     switch (e.type) {
       case 'user_message':
       case 'assistant_message': {
+        // Auto-resume plumbing stays in the log but out of the document.
+        if (e.type === 'user_message' && e.text.startsWith('[Auto-resume]')) {
+          flush();
+          break;
+        }
         if (e.threadId) {
           const list = threadMessages.get(e.threadId) ?? [];
           list.push(e);
