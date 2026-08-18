@@ -112,14 +112,18 @@ try {
   // --- 6: model/effort switch — rotate the session in place, same conversation ---
   await page.waitForSelector('.workbar.idle', { timeout: 240000 });
   const chipBefore = (await page.locator('.model-chip').innerText()).trim();
+  // Config persists across runs, so pick whichever effort is NOT current — the
+  // switch must be a real rotation, never a dirty=false no-op that false-passes.
+  const targetEffort = chipBefore.includes('· low') ? 'medium' : 'low';
   await page.locator('.model-chip').click();
   await page.waitForSelector('.model-pop');
-  await page.locator('.effort-opt', { hasText: 'low' }).click();
+  await page.locator('.effort-opt', { hasText: targetEffort }).first().click();
   await page.locator('.model-pop-actions button.primary').click();
-  log('effort switch applied (→ low)');
+  log(`effort switch applied (→ ${targetEffort})`);
   // The server rotates the session and re-broadcasts hello; the chip re-renders.
   await page.waitForFunction(
-    () => document.querySelector('.model-chip')?.textContent?.includes('· low'),
+    (t) => document.querySelector('.model-chip')?.textContent?.includes(`· ${t}`),
+    targetEffort,
     { timeout: 30000 },
   );
   const chipAfter = (await page.locator('.model-chip').innerText()).trim();
