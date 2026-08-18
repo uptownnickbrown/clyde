@@ -1,6 +1,7 @@
 // Canned session snapshot for screenshot QA — deterministic, covers every UI state:
-// rich markdown, tool chips, dispatches, commits, open + resolved threads, queue,
-// compaction, usage gauge, tasks in all three states, pushed panels.
+// rich markdown, tool chips, dispatches, commits, open + resolved span threads plus
+// a message-level thread on a user message, queue, compaction, usage gauge, tasks
+// in all three states, pushed panels.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -85,6 +86,9 @@ export function buildSnapshot(projectRoot) {
     { id: 'tc6', ts: T(12), type: 'tool_call', toolUseId: 'tu7', tool: 'Read', input: { file_path: `${projectRoot}/qa/screenshots/01-overview.png` }, turnId: 't3' },
     { id: 'tr6', ts: T(12), type: 'tool_result', toolUseId: 'tu7', ok: true },
     { id: 'e-use1', ts: T(12), type: 'usage', contextTokens: 214000 },
+    // Message-level thread (no span) anchored on the USER's own message u2
+    { id: 'u-th3', ts: T(12), type: 'user_message', threadId: 'th3', text: 'Threading off my own message: the reference design I attached also has a dark-mode variant — is that in scope for the gallery?' },
+    { id: 'a-th3', ts: T(13), type: 'assistant_message', turnId: 't3c', threadId: 'th3', markdown: 'Yes — the capture matrix runs every state in both variants, so the gallery will show dark mode side by side with light.' },
     { id: 'e-cmp', ts: T(13), type: 'compaction', preTokens: 214000, trigger: 'auto' },
     { id: 'e-use2', ts: T(13), type: 'usage', contextTokens: 96000, costUsd: 4.18 },
     { id: 'a4', ts: T(14), type: 'assistant_message', turnId: 't4', markdown: A4 },
@@ -106,6 +110,13 @@ export function buildSnapshot(projectRoot) {
         anchor: { messageId: 'a3', start: A3.indexOf('you judge'), end: A3.indexOf('you judge') + 38, quote: 'you judge the bar without leaving Clyde' },
         status: 'resolved',
         createdAt: T(11),
+      },
+      // Message-level: anchored to the whole user message u2, no span/quote.
+      {
+        id: 'th3',
+        anchor: { messageId: 'u2' },
+        status: 'open',
+        createdAt: T(12),
       },
     ],
     queue: [

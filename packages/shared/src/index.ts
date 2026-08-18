@@ -3,15 +3,19 @@
 
 export type AgentStatus = 'idle' | 'working' | 'compacting' | 'disconnected';
 
-// ---------- Threads (span comments) ----------
+// ---------- Threads ----------
 
-/** Anchors are stable because messages are immutable: offsets index into the
- *  final markdown of the anchored assistant message. */
+/** Anchors are stable because messages are immutable. Two shapes share one type:
+ *  a span anchor carries {start, end, quote} — offsets index into the final
+ *  markdown of the anchored message — while a message-level anchor is just
+ *  {messageId}: the thread hangs off the whole message, no quote. The span
+ *  fields travel together; `quote` present ⇔ span thread. Existing threads.json
+ *  files (all span anchors) parse unchanged. */
 export interface ThreadAnchor {
   messageId: string;
-  start: number;
-  end: number;
-  quote: string;
+  start?: number;
+  end?: number;
+  quote?: string;
 }
 
 export interface Thread {
