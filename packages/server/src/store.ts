@@ -43,8 +43,13 @@ export class ClydeStore {
     this.panelsPath = path.join(this.clydeDir, 'panels.json');
   }
 
-  appendEvent(body: SessionEventBody): SessionEvent {
-    const event: SessionEvent = { id: crypto.randomUUID(), ts: new Date().toISOString(), ...body };
+  appendEvent(body: SessionEventBody, meta?: { ts?: string; sdkUuid?: string }): SessionEvent {
+    const event: SessionEvent = {
+      id: crypto.randomUUID(),
+      ts: meta?.ts ?? new Date().toISOString(),
+      ...(meta?.sdkUuid ? { sdkUuid: meta.sdkUuid } : {}),
+      ...body,
+    };
     fs.appendFileSync(this.eventsPath, JSON.stringify(event) + '\n');
     return event;
   }

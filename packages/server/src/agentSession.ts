@@ -16,6 +16,7 @@ import type {
 import { ClydeStore } from './store.js';
 import { GitWatcher } from './git.js';
 import { slog } from './log.js';
+import { parseSidebarMarker, planBackfill, previewOf, transcriptPathFor } from './backfill.js';
 
 /** Standing orders appended to the system prompt: the Clyde protocol. */
 const CLYDE_PROTOCOL = `
@@ -73,9 +74,9 @@ const NEW_SESSION_PRIME =
   '(tasks.json, DECISIONS.md, reviews/) so standing work and rulings carry forward. Then handle ' +
   'the message below.';
 
-/** Per-thread reply token; the id tells the server which thread to route to. */
+/** Per-thread reply token; the id tells the server which thread to route to.
+ *  (Parsing lives in backfill.ts — shared with the resume-boot backfill path.) */
 const sidebarToken = (threadId: string) => `[[sidebar:${threadId.slice(0, 8)}]]`;
-const SIDEBAR_RE = /^\s*\[\[sidebar(?::([a-zA-Z0-9-]{1,36}))?\]\]\s*/;
 
 interface Delivery {
   turnId: string;
@@ -137,6 +138,10 @@ export class AgentSession {
   }
 
   start(resumeSdkSessionId?: string) {
+    // Repair the crash window FIRST: events the CLI produced that a dying server
+    // never consumed get appended from the CLI's own transcript, so the snapshot is
+    // whole and maybeAutoResume below judges the true tail.
+    if (resumeSdkSessionId) this.backfillFromTranscript(resumeSdkSessionId);
     void this.git.start();
     this.watchTasksFile();
     const bootEvents = this.store.loadEvents();
@@ -252,6 +257,50 @@ export class AgentSession {
         );
         return;
       }
+    }
+  }
+
+  /** Recover events lost in the restart crash window from the SDK CLI's own
+   *  transcript on disk (see backfill.ts for format + correlation). Backfilled
+   *  events flow through the normal append path — fresh Clyde ids, original
+   *  timestamps, sdkUuid stamped — and replay the same side effects the live
+   *  translation would have had (task mirroring, dispatch cards). Never lets a
+   *  bad transcript take the boot down. */
+  private backfillFromTranscript(sdkSessionId: string) {
+    try {
+      const file = transcriptPathFor(this.store.projectRoot, sdkSessionId);
+      if (!fs.existsSync(file)) {
+        slog('session', 'warn', 'backfill: no SDK transcript on disk', { file });
+        return;
+      }
+      const events = this.store.loadEvents();
+      if (!events.length) return; // nothing logged yet — nothing can be missing from it
+      const plan = planBackfill({ events, transcript: fs.readFileSync(file, 'utf8'), threads: this.threads });
+      if (plan.skippedLines) slog('session', 'warn', 'backfill: skipped unparseable transcript lines', { count: plan.skippedLines });
+      if (plan.bailed) {
+        slog('session', 'warn', `backfill: ${plan.bailed}`, { file });
+        return;
+      }
+      if (!plan.planned.length) return;
+      if (plan.planned.length > 2000) {
+        // A real crash window is one turn's tail — even a marathon turn stays far
+        // under this; thousands means correlation broke and we'd flood the document.
+        slog('session', 'warn', 'backfill: implausibly large plan — refusing', { count: plan.planned.length });
+        return;
+      }
+      slog('session', 'info', 'backfill: recovering events lost to a mid-stream restart', {
+        count: plan.planned.length,
+        sawTurnEnd: plan.sawTurnEnd,
+      });
+      for (const p of plan.planned) {
+        const e = this.emit(p.body, { ts: p.ts, sdkUuid: p.sdkUuid });
+        if (p.body.type === 'assistant_message') this.lastAssistantMessageId = e.id;
+        else if (p.body.type === 'tool_call')
+          this.observeToolCall(p.body.toolUseId, p.body.tool, p.body.input, { ts: p.ts, sdkUuid: p.sdkUuid });
+        else if (p.body.type === 'tool_result') this.resolveTaskCreate(p.body.toolUseId, p.body.preview);
+      }
+    } catch (err) {
+      slog('session', 'error', 'backfill failed — continuing boot without it', { err: String(err) });
     }
   }
 
@@ -527,18 +576,24 @@ export class AgentSession {
     switch (msg.type) {
       case 'system': {
         if (msg.subtype === 'init') {
-          this.emit({
-            type: 'session_started',
-            sdkSessionId: msg.session_id,
-            model: msg.model ?? this.model,
-            cwd: this.store.projectRoot,
-          });
+          this.emit(
+            {
+              type: 'session_started',
+              sdkSessionId: msg.session_id,
+              model: msg.model ?? this.model,
+              cwd: this.store.projectRoot,
+            },
+            { sdkUuid: msg.uuid },
+          );
         } else if (msg.subtype === 'compact_boundary') {
-          this.emit({
-            type: 'compaction',
-            preTokens: msg.compact_metadata?.pre_tokens ?? msg.pre_tokens,
-            trigger: msg.compact_metadata?.trigger ?? msg.trigger,
-          });
+          this.emit(
+            {
+              type: 'compaction',
+              preTokens: msg.compact_metadata?.pre_tokens ?? msg.pre_tokens,
+              trigger: msg.compact_metadata?.trigger ?? msg.trigger,
+            },
+            { sdkUuid: msg.uuid },
+          );
           if (this.status === 'compacting') this.setStatus('idle');
         }
         break;
@@ -556,29 +611,27 @@ export class AgentSession {
         const content = msg.message?.content ?? [];
         for (const block of content) {
           if (block.type === 'text' && !parent && block.text.trim()) {
-            let markdown: string = block.text;
-            let threadId: string | undefined;
-            const marker = SIDEBAR_RE.exec(markdown);
-            if (marker) {
-              markdown = markdown.slice(marker[0].length);
-              const shortId = marker[1];
-              threadId = shortId
-                ? (this.threads.find((t) => t.id.startsWith(shortId))?.id ?? this.currentDelivery?.threadId)
-                : this.currentDelivery?.threadId;
-              slog('session', 'info', 'sidebar-marked message routed to thread', { shortId, threadId });
-            }
-            const e = this.emit({ type: 'assistant_message', markdown, turnId, threadId });
+            const { markdown, threadId, hadMarker } = parseSidebarMarker(
+              block.text,
+              this.threads,
+              this.currentDelivery?.threadId,
+            );
+            if (hadMarker) slog('session', 'info', 'sidebar-marked message routed to thread', { threadId });
+            const e = this.emit({ type: 'assistant_message', markdown, turnId, threadId }, { sdkUuid: msg.uuid });
             this.lastAssistantMessageId = e.id;
           } else if (block.type === 'tool_use') {
-            this.emit({
-              type: 'tool_call',
-              toolUseId: block.id,
-              tool: block.name,
-              input: block.input,
-              turnId,
-              parentToolUseId: parent ?? undefined,
-            });
-            this.observeToolCall(block.id, block.name, block.input);
+            this.emit(
+              {
+                type: 'tool_call',
+                toolUseId: block.id,
+                tool: block.name,
+                input: block.input,
+                turnId,
+                parentToolUseId: parent ?? undefined,
+              },
+              { sdkUuid: msg.uuid },
+            );
+            this.observeToolCall(block.id, block.name, block.input, { sdkUuid: msg.uuid });
           }
         }
         const usage = msg.message?.usage;
@@ -588,7 +641,7 @@ export class AgentSession {
             (usage.cache_read_input_tokens ?? 0) +
             (usage.cache_creation_input_tokens ?? 0) +
             (usage.output_tokens ?? 0);
-          this.emit({ type: 'usage', contextTokens });
+          this.emit({ type: 'usage', contextTokens }, { sdkUuid: msg.uuid });
         }
         break;
       }
@@ -597,12 +650,15 @@ export class AgentSession {
         if (Array.isArray(content)) {
           for (const block of content) {
             if (block.type === 'tool_result') {
-              this.emit({
-                type: 'tool_result',
-                toolUseId: block.tool_use_id,
-                ok: !block.is_error,
-                preview: previewOf(block.content),
-              });
+              this.emit(
+                {
+                  type: 'tool_result',
+                  toolUseId: block.tool_use_id,
+                  ok: !block.is_error,
+                  preview: previewOf(block.content),
+                },
+                { sdkUuid: msg.uuid },
+              );
               this.resolveTaskCreate(block.tool_use_id, previewOf(block.content));
             }
           }
@@ -624,7 +680,7 @@ export class AgentSession {
           costUsd: msg.total_cost_usd,
           queued: this.userQueue.length,
         });
-        this.emit({ type: 'turn_complete', turnId });
+        this.emit({ type: 'turn_complete', turnId }, { sdkUuid: msg.uuid });
         if (typeof msg.total_cost_usd === 'number') {
           // Baseline + per-process cumulative = true session total across restarts.
           this.emit({ type: 'usage', costUsd: this.costBaseline + msg.total_cost_usd });
@@ -647,17 +703,20 @@ export class AgentSession {
     }
   }
 
-  /** Derive Clyde-level events from meaningful tool calls. */
-  private observeToolCall(toolUseId: string, name: string, input: any) {
+  /** Derive Clyde-level events from meaningful tool calls (live and backfilled). */
+  private observeToolCall(toolUseId: string, name: string, input: any, meta?: { ts?: string; sdkUuid?: string }) {
     if (name === 'Task' || name === 'Agent') {
       // Real block id so dispatch ↔ tool_result ↔ subagent activity correlate (R8).
-      this.emit({
-        type: 'dispatch',
-        toolUseId,
-        agentType: input?.subagent_type,
-        description: input?.description,
-        prompt: input?.prompt ?? JSON.stringify(input),
-      });
+      this.emit(
+        {
+          type: 'dispatch',
+          toolUseId,
+          agentType: input?.subagent_type,
+          description: input?.description,
+          prompt: input?.prompt ?? JSON.stringify(input),
+        },
+        meta,
+      );
     }
     if (name === 'TaskCreate') {
       const provisional = crypto.randomUUID();
@@ -769,8 +828,8 @@ export class AgentSession {
 
   // ---------- plumbing ----------
 
-  private emit(body: SessionEventBody): SessionEvent {
-    const event = this.store.appendEvent(body);
+  private emit(body: SessionEventBody, meta?: { ts?: string; sdkUuid?: string }): SessionEvent {
+    const event = this.store.appendEvent(body, meta);
     this.bus.event(event);
     return event;
   }
@@ -803,20 +862,4 @@ function withAttachments(text: string, attachments?: string[]): string {
   return attachments?.length
     ? `${text}\n\n[Attached files — read them with the Read tool: ${attachments.join(', ')}]`
     : text;
-}
-
-function previewOf(content: unknown): string | undefined {
-  if (typeof content === 'string') return truncate(content, 400);
-  if (Array.isArray(content)) {
-    const text = content
-      .filter((b: any) => b?.type === 'text')
-      .map((b: any) => b.text)
-      .join('\n');
-    return text ? truncate(text, 400) : undefined;
-  }
-  return undefined;
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n) + '…' : s;
 }

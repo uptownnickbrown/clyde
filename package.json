@@ -11,7 +11,8 @@
     "dev": "npm run dev --workspace=@clyde/server & npm run dev --workspace=@clyde/web & wait",
     "build": "npm run build --workspace=@clyde/shared && npm run build --workspace=@clyde/web && npm run build --workspace=@clyde/server",
     "typecheck": "tsc -b packages/shared packages/server packages/web",
-    "qa:screens": "npm run build --workspace=@clyde/web && node qa/screenshot.mjs"
+    "qa:screens": "npm run build --workspace=@clyde/web && node qa/screenshot.mjs",
+    "qa:backfill": "tsc -b packages/shared packages/server && node qa/backfill-check.mjs"
   },
   "engines": {
     "node": ">=22"
