@@ -1,8 +1,8 @@
 # Clyde
 
-**Claude Code treats the transcript as a log. Clyde treats your conversation as a workspace.**
+**Claude + IDE.** An IDE treats your code as a workspace. Claude Code treats your conversation as a log. Clyde treats your conversation as *the* workspace.
 
-Clyde (Claude + IDE) is an opinionated local app for running long, ambitious, agent-driven builds. An IDE's job is: open the project, be oriented in ten seconds. Clyde's job is the same — but the project state it orients you in includes the **conversation**, the **plan**, the **decisions**, and the **context window**, not just the files.
+Clyde is an opinionated local app for running long, ambitious, agent-driven builds. An IDE's job is: open the project, be oriented in ten seconds. Clyde's job is the same — but the project state it orients you in includes the **conversation**, the **plan**, the **decisions**, and the **context window**, not just the files.
 
 ## Why
 
