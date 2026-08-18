@@ -10,7 +10,7 @@ import { startFixtureServer } from './fixture-server.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'screenshots');
-const PORT = 4123;
+const PORT = Number(process.env.QA_PORT ?? 4123); // override when runs happen in parallel
 
 fs.mkdirSync(OUT, { recursive: true });
 for (const f of fs.readdirSync(OUT)) if (f.endsWith('.png')) fs.unlinkSync(path.join(OUT, f));
@@ -50,6 +50,12 @@ try {
   });
   await page.waitForTimeout(300);
   await shot('02-conversation-tail');
+
+  // 2c — model/effort picker popover open (chip opens even mid-turn; Apply waits for idle)
+  await page.locator('.model-chip').click();
+  await page.waitForSelector('.model-pop');
+  await shot('02c-model-picker');
+  await page.locator('.model-pop-backdrop').click();
 
   // 2b — composer attachment chips: file via the (hidden) picker input + text alongside
   await page.setInputFiles('.composer input[type="file"]', path.join(HERE, 'fixtures/attachment-sample.png'));

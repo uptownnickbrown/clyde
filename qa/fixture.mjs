@@ -170,5 +170,6 @@ export function buildSnapshot(projectRoot) {
     status: 'working',
     gitStatus: { branch: 'main', dirtyFiles: 3 },
     model: 'claude-fable-5',
+    effort: 'xhigh',
   };
 }

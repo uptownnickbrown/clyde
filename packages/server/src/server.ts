@@ -40,7 +40,9 @@ export async function startServer(projectRoot: string, port: number, freshSessio
     threads: (threads) => broadcastAll({ type: 'threads', threads }),
   };
 
-  let session = new AgentSession(store, bus);
+  // Session config (model/effort picker) survives restarts alongside the event log.
+  const bootConfig = store.loadConfig();
+  let session = new AgentSession(store, bus, bootConfig?.model, bootConfig?.effort);
   const sdkSessionId = resumeId ? store.findSdkSessionId() : null;
   session.start(sdkSessionId ?? undefined);
 
@@ -68,6 +70,7 @@ export async function startServer(projectRoot: string, port: number, freshSessio
     status: session.status,
     gitStatus,
     model: session.model,
+    effort: session.effort,
   });
 
   const webDist = findWebDist();
@@ -219,11 +222,44 @@ export async function startServer(projectRoot: string, port: number, freshSessio
         case 'new_session': {
           // Retire the current session in place; the store on disk stays intact
           // and the fresh session starts with a clean event log + SDK conversation.
+          // Model/effort carry forward — the chip the user sees must not silently revert.
           slog('server', 'info', 'new session requested', { previous: store.sessionId });
+          const carry = { model: session.model, effort: session.effort };
           session.dispose();
           store = new ClydeStore(projectRoot);
-          session = new AgentSession(store, bus);
+          store.saveConfig(carry);
+          session = new AgentSession(store, bus, carry.model, carry.effort);
           session.start();
+          void buildSnapshot().then((snapshot) => {
+            for (const c of clients) send(c, { type: 'hello', snapshot });
+          });
+          break;
+        }
+        case 'set_model': {
+          // Rotate the session in place under new settings: same store, same SDK
+          // conversation (resume), fresh query loop. Idle-only — rotation aborts
+          // whatever the query stream is doing ('disconnected' allowed: rotation
+          // doubles as recovery when the stream died).
+          const MODELS = ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'];
+          const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+          if ((!MODELS.includes(msg.model) && msg.model !== session.model) || !EFFORTS.includes(msg.effort)) {
+            slog('server', 'warn', 'set_model refused: unknown model/effort', { model: msg.model, effort: msg.effort });
+            break;
+          }
+          if (session.status !== 'idle' && session.status !== 'disconnected') {
+            slog('server', 'warn', 'set_model refused: session not idle', { status: session.status });
+            break;
+          }
+          if (msg.model === session.model && msg.effort === session.effort) break;
+          slog('server', 'info', 'model/effort switch — rotating session', {
+            from: `${session.model}/${session.effort}`,
+            to: `${msg.model}/${msg.effort}`,
+          });
+          store.saveConfig({ model: msg.model, effort: msg.effort });
+          const sdk = store.findSdkSessionId();
+          session.dispose();
+          session = new AgentSession(store, bus, msg.model, msg.effort);
+          session.start(sdk ?? undefined);
           void buildSnapshot().then((snapshot) => {
             for (const c of clients) send(c, { type: 'hello', snapshot });
           });

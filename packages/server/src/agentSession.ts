@@ -129,6 +129,7 @@ export class AgentSession {
     readonly store: ClydeStore,
     private bus: Broadcast,
     readonly model = process.env.CLYDE_MODEL ?? 'claude-fable-5',
+    readonly effort = process.env.CLYDE_EFFORT ?? 'xhigh',
   ) {
     this.threads = store.loadThreads();
     this.tasks = store.loadTasks();
@@ -213,7 +214,7 @@ export class AgentSession {
       prompt: this.input(),
       options: {
         model: this.model,
-        effort: process.env.CLYDE_EFFORT ?? 'xhigh',
+        effort: this.effort,
         ...(resumeSdkSessionId ? { resume: resumeSdkSessionId } : {}),
         cwd: this.store.projectRoot,
         abortController: this.abort,

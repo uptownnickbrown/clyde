@@ -109,6 +109,40 @@ try {
   await shot('live-08-question-answered');
   log('question round-trip OK — answer reached the model');
 
+  // --- 6: model/effort switch — rotate the session in place, same conversation ---
+  await page.waitForSelector('.workbar.idle', { timeout: 240000 });
+  const chipBefore = (await page.locator('.model-chip').innerText()).trim();
+  await page.locator('.model-chip').click();
+  await page.waitForSelector('.model-pop');
+  await page.locator('.effort-opt', { hasText: 'low' }).click();
+  await page.locator('.model-pop-actions button.primary').click();
+  log('effort switch applied (→ low)');
+  // The server rotates the session and re-broadcasts hello; the chip re-renders.
+  await page.waitForFunction(
+    () => document.querySelector('.model-chip')?.textContent?.includes('· low'),
+    { timeout: 30000 },
+  );
+  const chipAfter = (await page.locator('.model-chip').innerText()).trim();
+  log(`chip: "${chipBefore}" → "${chipAfter}"`);
+  await shot('live-09-effort-switched');
+  // The rotated session must still hold the conversation: recall the mascot answer
+  // from section 5 (same SDK conversation — the new-session boundary was section 3).
+  const msgsBefore = await page.locator('.msg-assistant').count();
+  await page.locator('.composer textarea').fill(
+    'From memory of this conversation only — which mascot did I pick for the test suite? One word.',
+  );
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(
+    (n) => document.querySelectorAll('.msg-assistant').length > n,
+    msgsBefore,
+    { timeout: 240000 },
+  );
+  await page.waitForTimeout(300);
+  const recall = await page.locator('.msg-assistant').last().innerText();
+  if (!/otter/i.test(recall)) throw new Error(`rotated session lost the conversation — recall answer: ${recall.slice(0, 120)}`);
+  log('rotation kept the conversation (mascot recalled) — model/effort switch OK');
+  await shot('live-10-rotated-recall');
+
   console.log('\nLIVE QA: all flows passed');
 } finally {
   await browser.close();

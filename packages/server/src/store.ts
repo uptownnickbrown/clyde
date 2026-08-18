@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { SessionEvent, SessionEventBody, Thread, TaskItem, PanelSpec, QueuedItem } from '@clyde/shared';
 
+/** Per-session agent settings (the model/effort picker). Absent file = env defaults. */
+export interface SessionConfig {
+  model?: string;
+  effort?: string;
+}
+
 /** All Clyde state lives as plain files under <project>/.clyde/ — committed with
  *  the work, readable and writable by the agent, watched by the UI. */
 export class ClydeStore {
@@ -69,6 +75,14 @@ export class ClydeStore {
 
   saveQueue(items: QueuedItem[]) {
     fs.writeFileSync(path.join(this.sessionDir, 'queue.json'), JSON.stringify(items, null, 2));
+  }
+
+  loadConfig(): SessionConfig | null {
+    return this.readJson<SessionConfig>(path.join(this.sessionDir, 'config.json'));
+  }
+
+  saveConfig(config: SessionConfig) {
+    fs.writeFileSync(path.join(this.sessionDir, 'config.json'), JSON.stringify(config, null, 2));
   }
 
   loadThreads(): Thread[] {

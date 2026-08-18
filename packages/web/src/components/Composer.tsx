@@ -17,7 +17,8 @@ const MODELS: [id: string, label: string][] = [
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 /** Model + effort picker. Applying rotates the agent session in place (same
- *  conversation, resumed under the new settings), so switching is idle-only. */
+ *  conversation, resumed under the new settings), so switching is idle-only —
+ *  the popover always opens; Apply is what waits for idle. */
 function ModelPicker({
   model,
   effort,
@@ -41,8 +42,7 @@ function ModelPicker({
     <span className="model-picker">
       <button
         className="model-chip"
-        disabled={busy}
-        title={busy ? 'Switch model/effort when Clyde is idle' : 'Switch the agent model or reasoning effort'}
+        title="Switch the agent model or reasoning effort"
         onClick={() => {
           setPickModel(model);
           setPickEffort(effort ?? 'xhigh');
@@ -81,7 +81,7 @@ function ModelPicker({
             <div className="model-pop-actions">
               <button
                 className="primary"
-                disabled={!dirty}
+                disabled={!dirty || busy}
                 onClick={() => {
                   send({ type: 'set_model', model: pickModel, effort: pickEffort });
                   setOpen(false);
@@ -89,7 +89,9 @@ function ModelPicker({
               >
                 Apply
               </button>
-              <span className="model-pop-note">restarts the agent loop — conversation continues</span>
+              <span className="model-pop-note">
+                {busy ? 'applies when Clyde is idle — wait for the turn to end' : 'restarts the agent loop — conversation continues'}
+              </span>
             </div>
           </div>
         </>
