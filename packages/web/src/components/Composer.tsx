@@ -8,15 +8,107 @@ interface PendingFile {
   uploading: boolean;
 }
 
+const MODELS: [id: string, label: string][] = [
+  ['claude-fable-5', 'Fable 5'],
+  ['claude-opus-5', 'Opus 5'],
+  ['claude-sonnet-5', 'Sonnet 5'],
+  ['claude-haiku-4-5', 'Haiku 4.5'],
+];
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/** Model + effort picker. Applying rotates the agent session in place (same
+ *  conversation, resumed under the new settings), so switching is idle-only. */
+function ModelPicker({
+  model,
+  effort,
+  busy,
+  send,
+}: {
+  model: string;
+  effort: string | null;
+  busy: boolean;
+  send: (msg: ClientMessage) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pickModel, setPickModel] = useState(model);
+  const [pickEffort, setPickEffort] = useState(effort ?? 'xhigh');
+  // A scratch session may run an alias (CLYDE_MODEL=haiku) — keep it selectable.
+  const options: [string, string][] = MODELS.some(([id]) => id === model)
+    ? MODELS
+    : [[model, model.replace(/^claude-/, '')], ...MODELS];
+  const dirty = pickModel !== model || pickEffort !== (effort ?? 'xhigh');
+  return (
+    <span className="model-picker">
+      <button
+        className="model-chip"
+        disabled={busy}
+        title={busy ? 'Switch model/effort when Clyde is idle' : 'Switch the agent model or reasoning effort'}
+        onClick={() => {
+          setPickModel(model);
+          setPickEffort(effort ?? 'xhigh');
+          setOpen((o) => !o);
+        }}
+      >
+        {model.replace(/^claude-/, '')}
+        {effort ? ` · ${effort}` : ''}
+      </button>
+      {open && (
+        <>
+          <div className="model-pop-backdrop" onClick={() => setOpen(false)} />
+          <div className="model-pop">
+            <div className="model-pop-label">Model</div>
+            {options.map(([id, label]) => (
+              <button
+                key={id}
+                className={`model-opt${pickModel === id ? ' selected' : ''}`}
+                onClick={() => setPickModel(id)}
+              >
+                {pickModel === id ? '●' : '○'} {label}
+              </button>
+            ))}
+            <div className="model-pop-label">Effort</div>
+            <div className="effort-row">
+              {EFFORTS.map((e) => (
+                <button
+                  key={e}
+                  className={`effort-opt${pickEffort === e ? ' selected' : ''}`}
+                  onClick={() => setPickEffort(e)}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+            <div className="model-pop-actions">
+              <button
+                className="primary"
+                disabled={!dirty}
+                onClick={() => {
+                  send({ type: 'set_model', model: pickModel, effort: pickEffort });
+                  setOpen(false);
+                }}
+              >
+                Apply
+              </button>
+              <span className="model-pop-note">restarts the agent loop — conversation continues</span>
+            </div>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
 export function Composer({
   status,
   queue,
   model,
+  effort,
   send,
 }: {
   status: string;
   queue: QueuedItem[];
   model: string | null;
+  effort: string | null;
   send: (msg: ClientMessage) => void;
 }) {
   const [text, setText] = useState('');
@@ -139,9 +231,7 @@ export function Composer({
             }}
           />
           {model && (
-            <span className="model-chip" title={`Agent model: ${model}`}>
-              {model.replace(/^claude-/, '')}
-            </span>
+            <ModelPicker model={model} effort={effort} busy={working || status === 'awaiting_input'} send={send} />
           )}
         </div>
         <div>

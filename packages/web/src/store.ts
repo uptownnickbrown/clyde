@@ -31,6 +31,7 @@ export interface UIState {
   workingSince: string | null;
   gitStatus: GitStatus | null;
   model: string | null;
+  effort: string | null;
 }
 
 const initial: UIState = {
@@ -50,6 +51,7 @@ const initial: UIState = {
   workingSince: null,
   gitStatus: null,
   model: null,
+  effort: null,
 };
 
 type Action =
@@ -120,6 +122,7 @@ function reducer(state: UIState, action: Action): UIState {
         workingSince: s.status === 'working' && lastStatus ? lastStatus.ts : null,
         gitStatus: s.gitStatus ?? null,
         model: s.model ?? null,
+        effort: s.effort ?? null,
       };
     }
     case 'server': {
