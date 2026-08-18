@@ -70,6 +70,9 @@ function applyEvent(state: UIState, event: SessionEvent): UIState {
         contextTokens: event.contextTokens ?? state.contextTokens,
         costUsd: event.costUsd ?? state.costUsd,
       };
+    case 'compaction':
+      // The old count is stale the moment the summary lands; the next turn's usage refreshes it.
+      return { ...next, contextTokens: null };
     case 'tasks_updated':
       return { ...next, tasks: event.tasks };
     case 'panels_updated':
@@ -90,7 +93,10 @@ function reducer(state: UIState, action: Action): UIState {
   switch (action.kind) {
     case 'hello': {
       const s = action.snapshot;
-      const usage = [...s.events].reverse().find((e) => e.type === 'usage' && e.contextTokens);
+      // Context size only counts usage since the last compaction; cost is session-cumulative.
+      const lastCompact = s.events.reduce((acc, e, i) => (e.type === 'compaction' ? i : acc), -1);
+      const usage = [...s.events.slice(lastCompact + 1)].reverse().find((e) => e.type === 'usage' && e.contextTokens);
+      const cost = [...s.events].reverse().find((e) => e.type === 'usage' && e.costUsd != null);
       const lastStatus = [...s.events].reverse().find((e) => e.type === 'status');
       return {
         ...initial,
@@ -105,6 +111,7 @@ function reducer(state: UIState, action: Action): UIState {
         commits: s.commits,
         status: s.status,
         contextTokens: usage?.type === 'usage' ? (usage.contextTokens ?? null) : null,
+        costUsd: cost?.type === 'usage' ? (cost.costUsd ?? null) : null,
         workingSince: s.status === 'working' && lastStatus ? lastStatus.ts : null,
       };
     }

@@ -35,6 +35,14 @@ export function WorkBar({
       </div>
     );
   }
+  if (status === 'compacting') {
+    return (
+      <div className="workbar compacting">
+        <span className="workbar-dot" />
+        compacting context — summarizing older turns (can take a couple of minutes)…
+      </div>
+    );
+  }
   if (status === 'idle') {
     return (
       <div className="workbar idle">

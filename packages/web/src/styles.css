@@ -132,6 +132,8 @@ body {
 .workbar.idle .workbar-dot { background: var(--green); }
 .workbar.disconnected { color: var(--red); }
 .workbar.disconnected .workbar-dot { background: var(--red); }
+.workbar.compacting { color: var(--accent); }
+.workbar.compacting .workbar-dot { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.25; } }
 
 /* ---------- composer ---------- */
@@ -222,6 +224,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .commit-patch { max-height: 320px; overflow-y: auto; }
 .commit-detail-actions { display: flex; gap: 14px; margin: 4px 0; }
 button.linklike { background: none; border: none; color: var(--accent); font-size: 12px; padding: 0; }
+button.linklike:disabled { opacity: 0.55; cursor: default; }
 
 .rail-resizer { width: 5px; flex-shrink: 0; cursor: col-resize; }
 .rail-resizer:hover { background: var(--accent-dim); }
@@ -271,7 +274,7 @@ button.linklike { background: none; border: none; color: var(--accent); font-siz
 .reviews-panel input[type='checkbox'] { accent-color: var(--green); }
 
 .gauge-bar { height: 10px; background: var(--bg-raised); border-radius: 5px; overflow: hidden; }
-.gauge-label { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+.gauge-label { font-size: 12px; color: var(--text-dim); margin-top: 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .compactions { margin: 10px 0; padding: 8px 10px; background: var(--bg-raised); border-radius: 8px; font-size: 12px; color: var(--amber); }
 .context-panel h4 { margin: 14px 0 6px; font-size: 12px; color: var(--text-dim); }
 .files-touched { list-style: none; margin: 0; padding: 0; }

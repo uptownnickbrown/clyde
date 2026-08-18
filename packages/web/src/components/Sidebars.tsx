@@ -361,14 +361,22 @@ export function ContextPanel({
   events,
   contextTokens,
   costUsd,
+  status,
   send,
 }: {
   events: SessionEvent[];
   contextTokens: number | null;
   costUsd: number | null;
+  status: string;
   send: (msg: ClientMessage) => void;
 }) {
   const compactions = events.filter((e) => e.type === 'compaction');
+  const compacting = status === 'compacting';
+  // Click feedback until the server confirms (status flip or the boundary event landing).
+  const [requested, setRequested] = useState(false);
+  useEffect(() => {
+    if (compacting || compactions.length) setRequested(false);
+  }, [compacting, compactions.length]);
   const filesRead = new Map<string, number>();
   for (const e of events) {
     if (e.type === 'tool_call' && (e.tool === 'Read' || e.tool === 'Edit' || e.tool === 'Write')) {
@@ -384,8 +392,25 @@ export function ContextPanel({
           <div className="gauge-fill" style={{ width: `${pct}%` }} />
         </div>
         <div className="gauge-label">
-          {contextTokens ? `~${Math.round(contextTokens / 1000)}k / 1M tokens` : 'no usage data yet'}
-          {costUsd != null && ` · $${costUsd.toFixed(2)}`}
+          <span title="Cumulative API cost reported by the SDK for this session (all turns + subagents)">
+            {contextTokens
+              ? `~${Math.round(contextTokens / 1000)}k / 1M tokens`
+              : compactions.length
+                ? 'compacted — fresh count next turn'
+                : 'no usage data yet'}
+            {costUsd != null && ` · $${costUsd.toFixed(2)}`}
+          </span>
+          <button
+            className="linklike"
+            disabled={compacting || requested}
+            title="Summarize older context to free the window (defers to the turn boundary if Clyde is working)"
+            onClick={() => {
+              send({ type: 'compact' });
+              setRequested(true);
+            }}
+          >
+            {compacting ? '⇊ compacting…' : requested ? '⇊ compact queued' : '⇊ compact now'}
+          </button>
         </div>
       </div>
       {compactions.length > 0 && (

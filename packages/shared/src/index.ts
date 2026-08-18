@@ -1,7 +1,7 @@
 // Clyde wire protocol + domain types — the contract between server and web UI.
 // Everything persisted to .clyde/ or sent over the WebSocket is defined here.
 
-export type AgentStatus = 'idle' | 'working' | 'disconnected';
+export type AgentStatus = 'idle' | 'working' | 'compacting' | 'disconnected';
 
 // ---------- Threads (span comments) ----------
 
@@ -108,7 +108,8 @@ export type ClientMessage =
   | { type: 'thread_reply'; threadId: string; text: string; urgent?: boolean }
   | { type: 'resolve_thread'; threadId: string }
   | { type: 'withdraw_queued'; queuedId: string }
-  | { type: 'interrupt' };
+  | { type: 'interrupt' }
+  | { type: 'compact' };
 
 export interface Snapshot {
   projectName: string;

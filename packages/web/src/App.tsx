@@ -104,6 +104,7 @@ export default function App() {
               events={state.events}
               contextTokens={state.contextTokens}
               costUsd={state.costUsd}
+              status={state.status}
               send={send}
             />
           )}

@@ -167,6 +167,9 @@ export async function startServer(projectRoot: string, port: number, freshSessio
         case 'interrupt':
           session.interrupt();
           break;
+        case 'compact':
+          session.requestCompact();
+          break;
       }
     });
     ws.on('close', () => clients.delete(ws));

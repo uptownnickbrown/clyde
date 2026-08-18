@@ -85,6 +85,7 @@ export class AgentSession {
   /** TaskCreate tool_use ids awaiting their result, mapped to provisional task ids. */
   private pendingTaskCreates = new Map<string, string>();
   private pendingCompact = false;
+  private costBaseline = 0;
 
   constructor(
     readonly store: ClydeStore,
@@ -104,6 +105,10 @@ export class AgentSession {
 
   start(resumeSdkSessionId?: string) {
     void this.git.start();
+    // SDK total_cost_usd resets every process; seed from the log so $ stays session-cumulative.
+    for (const e of [...this.store.loadEvents()].reverse()) {
+      if (e.type === 'usage' && typeof e.costUsd === 'number') { this.costBaseline = e.costUsd; break; }
+    }
     const clydeTools = createSdkMcpServer({
       name: 'clyde',
       version: '0.1.0',
@@ -296,6 +301,7 @@ export class AgentSession {
    *  while working. Silent plumbing — no user_message event; the compact_boundary
    *  divider is the visible confirmation. */
   requestCompact() {
+    if (this.status === 'compacting' || this.pendingCompact) return; // one at a time
     if (this.status === 'working') {
       slog('session', 'info', 'compact requested — deferred to turn boundary');
       this.pendingCompact = true;
@@ -307,6 +313,7 @@ export class AgentSession {
   private sendCompact() {
     slog('session', 'info', 'sending /compact');
     this.pushInput({ type: 'user', message: { role: 'user', content: '/compact' }, parent_tool_use_id: null });
+    this.setStatus('compacting');
   }
 
   resolveThread(threadId: string) {
@@ -391,6 +398,7 @@ export class AgentSession {
             preTokens: msg.compact_metadata?.pre_tokens ?? msg.pre_tokens,
             trigger: msg.compact_metadata?.trigger ?? msg.trigger,
           });
+          if (this.status === 'compacting') this.setStatus('idle');
         }
         break;
       }
@@ -469,7 +477,8 @@ export class AgentSession {
         });
         this.emit({ type: 'turn_complete', turnId });
         if (typeof msg.total_cost_usd === 'number') {
-          this.emit({ type: 'usage', costUsd: msg.total_cost_usd });
+          // Baseline + per-process cumulative = true session total across restarts.
+          this.emit({ type: 'usage', costUsd: this.costBaseline + msg.total_cost_usd });
         }
         this.currentDelivery = null;
         void this.git.poll();
