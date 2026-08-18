@@ -35,7 +35,11 @@ export function Composer({
       <textarea
         value={text}
         placeholder={working ? 'Message (queues until turn boundary)…' : 'Message Clyde…'}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          e.target.style.height = 'auto';
+          e.target.style.height = `${Math.min(e.target.scrollHeight + 2, 220)}px`;
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(false);
         }}

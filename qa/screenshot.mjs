@@ -77,11 +77,20 @@ try {
   await page.locator('.tabs button', { hasText: 'context' }).click();
   await shot('08-context-tab');
 
-  // 9 — dogfood: the real dev app, if it is running (non-fatal if not)
+  // 9 — goal tab scrolled to the bottom: SCOPE.md's risks table must render as a table (GFM)
+  await page.locator('.tabs button', { hasText: 'goal' }).click();
+  await page.evaluate(() => {
+    const rail = document.querySelector('.right-rail');
+    rail.scrollTo(0, rail.scrollHeight);
+  });
+  await page.waitForTimeout(300);
+  await shot('09-goal-scope-table');
+
+  // 10 — dogfood: the real dev app, if it is running (non-fatal if not)
   try {
     await page.goto('http://localhost:5173/', { timeout: 3000 });
     await page.waitForTimeout(1500);
-    await shot('09-live-dogfood');
+    await shot('10-live-dogfood');
   } catch {
     console.log('  – live dev app not reachable, skipped dogfood shot');
   }

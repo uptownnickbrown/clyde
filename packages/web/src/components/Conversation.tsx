@@ -1,6 +1,6 @@
-import { useMemo, useState, type MouseEvent } from 'react';
-import Markdown from 'react-markdown';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import type { ClientMessage, SessionEvent, Thread } from '@clyde/shared';
+import { Md } from './Md';
 
 // The conversation document: prose only, tool noise collapsed to chips,
 // threads rendered under their anchor messages.
@@ -57,12 +57,13 @@ export function Conversation({
 
   return (
     <div className="conversation" onMouseDown={() => setPending(null)}>
+      <div className="conversation-doc">
       {items.map((item) => {
         switch (item.kind) {
           case 'user':
             return (
               <div key={item.event.id} className="msg-user">
-                <Markdown>{item.event.text}</Markdown>
+                <Md>{item.event.text}</Md>
               </div>
             );
           case 'assistant': {
@@ -70,11 +71,8 @@ export function Conversation({
             return (
               <div key={item.event.id} id={`msg-${item.event.id}`} className="msg-assistant-wrap">
                 <div className="msg-assistant" onMouseUp={(e) => onMouseUp(e, item.event.id)}>
-                  <Markdown>{item.event.markdown}</Markdown>
+                  <Md>{item.event.markdown}</Md>
                 </div>
-                {anchored.map((t) => (
-                  <ThreadCard key={t.id} thread={t} messages={threadMessages.get(t.id) ?? []} send={send} />
-                ))}
                 {composing?.messageId === item.event.id && (
                   <CommentBox
                     quote={composing.quote}
@@ -95,6 +93,9 @@ export function Conversation({
                     onCancel={() => setComposing(null)}
                   />
                 )}
+                {anchored.map((t) => (
+                  <ThreadCard key={t.id} thread={t} messages={threadMessages.get(t.id) ?? []} send={send} />
+                ))}
               </div>
             );
           }
@@ -122,11 +123,12 @@ export function Conversation({
       {Object.entries(liveText).map(([turnId, text]) =>
         text ? (
           <div key={turnId} className="msg-assistant live">
-            <Markdown>{text}</Markdown>
+            <Md>{text.replace(/^\s*\[\[sidebar[^\]]*\]\]\s*/, '')}</Md>
             <span className="cursor">▋</span>
           </div>
         ) : null,
       )}
+      </div>
 
       {pending && (
         <button
@@ -223,8 +225,16 @@ function ActivityChip({ items }: { items: ActivityItem[] }) {
 function summarizeInput(tool: string, input: unknown): string {
   const i = input as Record<string, unknown> | null;
   if (!i) return '';
-  const val = i.file_path ?? i.path ?? i.command ?? i.pattern ?? i.description ?? '';
+  const pathVal = i.file_path ?? i.path;
+  if (typeof pathVal === 'string') return shortPath(pathVal);
+  const val = i.command ?? i.pattern ?? i.description ?? '';
   return typeof val === 'string' ? val.slice(0, 80) : '';
+}
+
+/** Absolute paths are noise in the document — show a tail the eye can parse. */
+function shortPath(p: string): string {
+  const parts = p.split('/').filter(Boolean);
+  return parts.length > 3 ? '…/' + parts.slice(-3).join('/') : p;
 }
 
 function ThreadCard({
@@ -242,7 +252,7 @@ function ThreadCard({
       <div className="thread-quote">“{thread.anchor.quote.slice(0, 200)}”</div>
       {messages.map((m) => (
         <div key={m.id} className={m.type === 'user_message' ? 'thread-user' : 'thread-assistant'}>
-          <Markdown>{m.type === 'user_message' ? m.text : m.type === 'assistant_message' ? m.markdown : ''}</Markdown>
+          <Md>{m.type === 'user_message' ? m.text : m.type === 'assistant_message' ? m.markdown : ''}</Md>
         </div>
       ))}
       {thread.status === 'open' ? (
@@ -277,8 +287,13 @@ function CommentBox({
   onCancel: () => void;
 }) {
   const [text, setText] = useState('');
+  const boxRef = useRef<HTMLDivElement>(null);
+  // The box mounts below the message (possibly past open threads) — bring it to the eye.
+  useEffect(() => {
+    boxRef.current?.scrollIntoView({ block: 'center' });
+  }, []);
   return (
-    <div className="comment-box">
+    <div className="comment-box" ref={boxRef}>
       <div className="thread-quote">“{quote.slice(0, 200)}”</div>
       <textarea
         autoFocus

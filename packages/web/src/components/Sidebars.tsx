@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import Markdown from 'react-markdown';
 import type { ClientMessage, CommitInfo, PanelSpec, SessionEvent, TaskItem } from '@clyde/shared';
+import { Md } from './Md';
 
 // ---------- Left rail ----------
 
@@ -55,7 +55,7 @@ export function GitPanel({ commits }: { commits: CommitInfo[] }) {
 export function GoalPanel({ markdown }: { markdown: string | null }) {
   return (
     <div className="goal-panel">
-      {markdown ? <Markdown>{markdown}</Markdown> : <div className="empty">No SCOPE.md found in project root.</div>}
+      {markdown ? <Md>{markdown}</Md> : <div className="empty">No SCOPE.md found in project root.</div>}
     </div>
   );
 }
@@ -149,7 +149,7 @@ function FileMarkdown({ path }: { path: string }) {
       .then(setText)
       .catch(() => setText(''));
   }, [path]);
-  return <Markdown>{text}</Markdown>;
+  return <Md>{text}</Md>;
 }
 
 function Metrics({ path }: { path: string }) {
@@ -216,7 +216,7 @@ export function ContextPanel({
       <ul className="files-touched">
         {[...filesRead.entries()].map(([path, count]) => (
           <li key={path}>
-            <span className="file-path">{path.split('/').slice(-2).join('/')}</span>
+            <span className="file-path">{path.split('/').slice(-3).join('/')}</span>
             <span className="file-count">×{count}</span>
             <button
               title="Ask Clyde to re-read this file next turn"
