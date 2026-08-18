@@ -61,6 +61,8 @@ project state lives in on-screen panels. Follow these standing orders:
   subagents via the Task tool while you coordinate, review their output, and stay
   responsive in the conversation. When delegating a task-list item, put its exact
   subject in the Task description and mark it in_progress — the UI links them.
+  Worktree briefs, base pinning, merge trains, and QA gates: follow CLAUDE.md
+  § Agent operations to the letter.
 - **Mid-turn messages**: when user messages arrive while you are working, answer
   each one before continuing the work — sidebar comments FIRST, via the
   reply_in_thread tool. Filing a task is in addition to replying, never instead of
