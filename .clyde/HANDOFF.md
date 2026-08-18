@@ -1,48 +1,40 @@
-# Handoff — end of the questions/threads/backfill/orchestration day (2026-08-18)
+# Handoff — end of the stability/ceremony/picker wave (2026-08-18, evening)
 
-One-time primer for the next fresh session. Read this, then work the task list.
+One-time primer for the next fresh session. Read this, then work normally.
 Delete this file once absorbed (durable state: tasks.json, DECISIONS.md, CLAUDE.md).
 
-## What landed today (all on main, all gate-verified)
+## What landed this wave (break-glass coordinator + 3 worktree agents, one train)
 
-- **#15 Question experience**: real AskUserQuestion via canUseTool (always falls
-  through, even under bypassPermissions — no ask rule needed). Amber card in the
-  right-workbench Questions tab, blocking, multiSelect + Other, answered history.
-  First production use settled the #19 confirm-step design.
-- **Attention-surface shell (#21+#12)**: Goal (editable, POST /api/goal, agent
-  notified) + Artifacts (amber unseen badge) in the left rail; right workbench is
-  attention-only. **#18**: threads off any message incl. the user's own.
-- **Resilience**: #17 resume-boot backfill from the CLI transcript (+ whole-
-  transcript notification sweep incl. queue-operation lines); #10 auto-resume;
-  sdkUuid stamped on all live events. THREE loss mechanisms found+fixed today —
-  see DECISIONS + CLAUDE.md § Agent operations choreography rule (restart-
-  triggering commands travel ALONE in their message).
-- **#23 Agents panel v2**: dispatch_update lifecycle, ticking durations,
-  heartbeats, worktree chips, expandable reports. **#22** orchestration doctrine
-  in CLAUDE.md § Agent operations — FOLLOW IT TO THE LETTER for subagent waves.
+- **#25 model/effort picker** — fully working: chip in the composer, popover opens
+  mid-turn, Apply waits for idle; set_model rotates the session in place (same SDK
+  conversation, resumed under new settings); {model,effort} persist per session in
+  config.json and carry into New-session. Live-fired: rotation kept recall.
+- **#19 review ceremony (flagship; subsumed #13)** — ☰ Review in the composer;
+  dump saved verbatim at enqueue; injected ceremony script (distill → echo → one
+  clarify AskUserQuestion → one multiSelect confirm → tasks.json with
+  source/batch/declined+reason → review file annotated). Reviews panel is now a
+  batch burn-down lens over Tasks. Live-fired TWICE end-to-end on scratch haiku.
+- **#24 delta journal** — the last loss window closed: streamed deltas persist per
+  turn, boot recovers a `provisional`-marked message when both events.jsonl and
+  the CLI transcript missed it. Plus a lesson the first ceremony run taught:
+  **tasks.json shape is normalized at load** and **translate() errors no longer
+  kill the SDK stream** (one malformed write used to end the whole session).
+- **#11 task editing** — ✎ edit in expanded task cards (subject/detail/status,
+  edit_task wire message, one debounced [Tasks edited] agent note). Dispatch
+  preview declined under stretch-real (see DECISIONS).
+- **#20 responsive pass** — wide/medium(<1280, one aux surface)/narrow(<960,
+  drawers+scrim)/phone(<680, condensed chrome) with behavioral QA assertions.
 
-## In flight — finish first
+## State
 
-- **#25 model/effort picker**: web+shared half is committed on branch
-  `wip-model-picker` (merge it into your tree before starting). The server half
-  + gates are fully specified in the task detail. Without the server half the
-  picker is dead chrome — do not land the branch on main alone.
-
-## Suggested order
-
-1. **#25** (small, finishes an in-flight unit; server-save choreography applies)
-2. **#19 review ceremony** (flagship; spec settled in task detail — question-card
-   confirm; subsumes #13; you own it, don't delegate the ceremony judgment)
-3. **#11 + #20** as a parallel worktree wave per CLAUDE.md § Agent operations
-4. **#24** delta journal when touching the server anyway
-
-## Operating reminders
-
-- The user runs `npm run dev` (tsx watch): ANY packages/server/src save restarts
-  the server and cuts your turn. Auto-resume + backfill carry you over; still,
-  batch server saves and let prose flush first (doctrine).
-- Tasks: edit .clyde/tasks.json directly — the server watches it live.
-- QA gates before closing anything: typecheck; qa/screenshot.mjs (23 states);
-  live-drive on a scratch project (port 4141, CLYDE_MODEL=haiku) when server
-  behavior changed. /tmp/clyde-scratch exists with git configured.
-- The user files review waves — #19's ceremony is how they want them eaten.
+- **The task list is at zero pending.** The next wave starts from user feedback:
+  they will drive the polished UI and likely file review batches — which now run
+  through YOUR ceremony. Follow the injected script to the letter; tasks.json is
+  a TOP-LEVEL ARRAY, string ids, subject/detail field names.
+- QA gates: `npm run typecheck`; `npm run qa:backfill` (46 checks);
+  `npm run qa:screens` (28 fixture states + behavioral responsive asserts;
+  QA_PORT env for parallel runs); `node qa/live-drive.mjs` against a scratch
+  project on 4141 (6 sections incl. effort switch) when server behavior changed.
+- /tmp/clyde-scratch exists with git + two ceremony batches in its .clyde.
+- Operating doctrine unchanged: CLAUDE.md § Agent operations for subagent waves;
+  restart-triggering commands travel alone; server saves batched.

@@ -63,8 +63,8 @@
   {
     "id": "11",
     "subject": "Tasks panel: edit subject/status, dispatch preview (R1 remainder)",
-    "status": "pending",
-    "detail": "Expansion shipped in 1220d07 (redesign wave). Remaining: editing writes to file + surfaces to agent as a user note (needs a wire-protocol addition); dispatch-prompt preview/editing rides on the canUseTool interception spike."
+    "status": "completed",
+    "detail": "Editing DONE (066d304, wave-3 train): ✎ edit in the expanded card — subject/detail/status form, edit_task wire message, server applies + ONE debounced [Tasks edited] note to the agent (mirrors [Goal updated]); 01c-task-edit capture. Dispatch preview DECLINED under the stretch-real ruling (recorded in DECISIONS.md 2026-08-18): the UI cannot honestly render the brief the coordinator would write — it becomes real when a dispatch-from-task flow exists (SCOPE §panel-1 keeps it as direction)."
   },
   {
     "id": "12",
@@ -75,8 +75,8 @@
   {
     "id": "13",
     "subject": "Fold review items into Tasks per lifecycle-test decision (R4 follow-up)",
-    "status": "pending",
-    "detail": "Per the recorded decision: Reviews tab stays a lens; review items become Tasks with source provenance, declined-with-reasons state, and intake-batch grouping. Data model subsumed by #19 (the intake ceremony) — implement together."
+    "status": "completed",
+    "detail": "DONE with #19 (fbb1d17, wave-3 train) as designed: TaskItem carries source {review,item} + batch + declined/declineReason; the Reviews tab renders intake batches as burn-downs over tasks (settled = completed + declined) with legacy markdown checklists beneath."
   },
   {
     "id": "14",
@@ -112,8 +112,8 @@
   {
     "id": "19",
     "subject": "Review ceremony: intake mode → distill → ask → Tasks with provenance",
-    "status": "pending",
-    "detail": "Per the intake-ceremony decision (DECISIONS.md 2026-08-18). Flow: (1) \"Start review\" composer mode AND agent auto-detect of unprompted feedback dumps; (2) raw dump saved verbatim to .clyde/reviews/<date>-<slug>.md as provenance; (3) agent distills to numbered items, echoes them back; (4) clarifying questions via AskUserQuestion (#15 is a prerequisite); (5) confirmed items become Tasks carrying source (review file + item), batch id, and a declined-with-reasons state (TaskItem additions in shared); (6) Reviews panel becomes a burn-down lens over task batches instead of parsing markdown checkboxes. Subsumes the data model of #13 — do them together. DESIGN SETTLED (question-card-confirm ruling, 2026-08-18): shared TaskItem += source?:{review,item}, batch?:string, status \"declined\" + declineReason?. Wire: send_message += reviewIntake?; composer gains a Start-review mode. Server: intake message saved verbatim to .clyde/reviews/<date>-<slug>.md (filename = batch id) + ceremony instructions injected. Agent flow: distill -> numbered checklist echo in conversation -> batched clarifying AskUserQuestions -> ONE multiSelect question card to confirm items (unchecked = declined; reasons captured) -> tasks written to tasks.json with provenance -> review file annotated. Reviews panel becomes a burn-down lens over task batches (completed+declined/total, raw-file link); legacy markdown checklists keep rendering. Standing-orders ceremony section at implementation time."
+    "status": "completed",
+    "detail": "DONE (fbb1d17 + hardening 9faa39a, wave-3 train), exactly per the settled design: ☰ Review arms the composer; the dump saves verbatim to .clyde/reviews/<batch>.md AT ENQUEUE (survives restarts); delivery injects the ceremony script (distill → echo → one clarifying AskUserQuestion → one multiSelect confirm → tasks.json edits with source/batch/declined+reason → review file annotated with ## Intake result). Reviews panel = batch burn-down lens; document badges intake messages; standing orders cover auto-detect of unprompted dumps. LIVE-FIRED TWICE on scratch haiku: run 1 exposed a real failure (haiku wrote {tasks:[…]} with title/description keys → unvalidated load killed the SDK stream) → hardened (normalizeTasks + survivable translate + shape pinned in the script); run 2 end-to-end PASS — 3 items filed with provenance, 1 declined with reason, file annotated, accepted items then implemented. Captures 02d-review-mode, 10-reviews-panel, live-11-ceremony."
   },
   {
     "id": "21",
@@ -136,19 +136,19 @@
   {
     "id": "24",
     "subject": "Close the last loss window: delta journal + restart choreography",
-    "status": "pending",
-    "detail": "Third loss mechanism found 2026-08-18 (user report, log-verified): prose sharing an API response with a restart-triggering tool call dies in BOTH the server and the CLI's unflushed transcript — unrecoverable by backfill, even though it streamed to the user's screen. Fix (a) delta journal: the server appends streamed text deltas to sessions/<id>/deltas-<turnId>.log as they arrive (fsync-cheap), deletes on the final assistant_message; on boot, if neither events.jsonl nor the CLI transcript has the turn's tail, recover a provisional assistant_message from the journal (marked provisional). Fix (b) choreography, applied to CLAUDE.md now: the restart-triggering command must be the ONLY content of its message — say anything user-facing in the previous message and let it flush first."
+    "status": "completed",
+    "detail": "DONE (7c0ada2 journal + 9faa39a follow-through, wave-3 train). Delta journal: streamed text appends to sessions/<id>/deltas-<turnId>.log as it arrives, cleared when the durable assistant_message lands or the turn completes; boot recovery (pure planJournalRecovery in backfill.ts) emits a provisional assistant_message — marked in shared + rendered with a faint 'recovered from stream' chip — only when neither events.jsonl nor the CLI transcript covers the text; sidebar markers stripped before probe and render. Choreography half was already in CLAUDE.md. BONUS same-class fix from ceremony live-fire: tasks.json shape normalization + translate() failures no longer kill the SDK stream. 11 offline checks in qa/backfill-check.mjs (46 total). Limitations noted in-code: 80-char coverage probe; recovered sidebar replies land in main flow."
   },
   {
     "id": "25",
     "subject": "Model + effort picker in the composer (working, not chrome)",
-    "status": "pending",
-    "detail": "User request 2026-08-18 (screenshot of static fable-5 chip). Web+shared half DONE on branch wip-model-picker: ModelPicker popover in Composer (4 models + alias passthrough, 5 efforts, Apply disabled unless dirty/idle), set_model ClientMessage, Snapshot.effort, store plumbing, styles. REMAINING (server): persist {model,effort} to <sessionDir>/config.json; read at boot into AgentSession(store,bus,model,effort) (ctor gains effort param, start() uses this.effort not env); ws case set_model -> validate against allowlist+current model, save config, rotate session in place (dispose + new AgentSession same store + resume findSdkSessionId()) idle-only, rebroadcast hello; snapshot.effort. Gates: typecheck, fixture (add effort to snapshot + 02c-model-picker capture), live-drive section 6 (switch effort on scratch, verify chip + round-trip). Land server saves per CLAUDE.md choreography."
+    "status": "completed",
+    "detail": "DONE 2262df7 (break-glass wave 2): server half landed on top of the wip-model-picker web half. {model,effort} persist to <sessionDir>/config.json and win over env at boot; set_model validates (4-model allowlist + current-alias passthrough, 5 efforts), rotates the session in place (dispose + new AgentSession, same store, SDK resume) idle-or-disconnected-only, rebroadcasts hello; new_session carries settings forward so the chip never silently reverts. Popover opens mid-turn, Apply waits for idle. Gates: typecheck; 24-state fixture run incl. new 02c-model-picker; live scratch rotation (chip haiku·xhigh→haiku·low, config.json written, rotation log line, round-trip on rotated session). live-drive gained section 6 (effort switch + conversation-recall check) for future full runs."
   },
   {
     "id": "20",
     "subject": "Responsive layout pass (Design Vision §5)",
-    "status": "pending",
-    "detail": "Wide/medium/narrow behavior: medium = one auxiliary panel at a time; narrow = capability panels become overlays/drawers over the conversation; very narrow = conversation first. Priority order under constraint: conversation → composer/status → active panel → nav → diagnostics. Never squeeze every panel until none are pleasant."
+    "status": "completed",
+    "detail": "DONE (a38b5f9, wave-3 train): wide ≥1280 unchanged (resizers + persistence); medium <1280 one auxiliary surface at a time (React matchMedia coordination); narrow <960 capability panels + workbench become overlay drawers with scrim over a full-width conversation; phone <680 condensed top bar (no gauge/cost), rail-only nav, near-full-width drawers. localStorage describes the wide layout only; below-wide toggles are transient. Gates: all fixture captures unchanged at 1440x900 + new 20a-medium/20b-narrow-drawer/20c-phone with behavioral assertions (not just pixels)."
   }
 ]
