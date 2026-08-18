@@ -169,6 +169,9 @@ export class AgentSession {
         includePartialMessages: true,
         systemPrompt: { type: 'preset', preset: 'claude_code', append: CLYDE_PROTOCOL },
         settingSources: ['project'],
+        // Only the servers named here — account-level claude.ai connectors otherwise
+        // ride in on the user's login and nag the agent about OAuth.
+        strictMcpConfig: true,
         mcpServers: { clyde: clydeTools },
         env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
       } as any,
