@@ -122,7 +122,7 @@ body {
 /* ---------- composer ---------- */
 .composer { border-top: 1px solid var(--border); padding: 10px 16px; background: var(--bg-panel); }
 .composer textarea {
-  width: 100%; min-height: 48px; max-height: 220px; resize: none; background: var(--bg);
+  width: 100%; min-height: 96px; max-height: 280px; resize: none; background: var(--bg);
   border: 1px solid var(--border); border-radius: 10px; color: var(--text);
   padding: 10px 12px; font: inherit;
 }
