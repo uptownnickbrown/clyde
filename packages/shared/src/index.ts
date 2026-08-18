@@ -90,7 +90,11 @@ export type SessionEventBody =
   | { type: 'status'; status: AgentStatus }
   | { type: 'error'; message: string };
 
-export type SessionEvent = { id: string; ts: string } & SessionEventBody;
+/** sdkUuid: wire uuid of the SDK/CLI transcript entry that produced this event.
+ *  Stamped by the live translation path so resume-boot backfill can correlate the
+ *  log against the CLI's own transcript exactly. Optional — absent on events that
+ *  originate in Clyde itself (user_message, status, …) and on pre-field logs. */
+export type SessionEvent = { id: string; ts: string; sdkUuid?: string } & SessionEventBody;
 
 // ---------- Queued user input (queue + urgent override) ----------
 
