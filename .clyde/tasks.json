@@ -69,8 +69,8 @@
   {
     "id": "12",
     "subject": "Goal doc editable in place, agent notified on save (R3 remainder)",
-    "status": "in_progress",
-    "detail": "Edit SCOPE.md in the goal tab → save to file → agent notified it changed. Needs a save endpoint + file-watch note into the conversation. Riding with the #21 agent (one unit: the Goal panel moves left AND becomes editable)."
+    "status": "completed",
+    "detail": "Edit SCOPE.md in the goal tab → save to file → agent notified it changed. Needs a save endpoint + file-watch note into the conversation. Riding with the #21 agent (one unit: the Goal panel moves left AND becomes editable). DONE (wave-B merge): Edit button in the (left-rail) Goal panel -> POST /api/goal writes SCOPE.md, goal broadcast to all clients, agent notified with a +N/-M note. Smoke-tested live on scratch: file written, notification turn delivered."
   },
   {
     "id": "13",
@@ -118,20 +118,20 @@
   {
     "id": "21",
     "subject": "Workbench restructure: attention surface right, reference tabs left",
-    "status": "in_progress",
-    "detail": "Per the attention-surface ruling (2026-08-18): demote Goal/Scope to a left-rail tab; split \"Panels\" — QA artifact galleries (image-gallery/markdown/metrics) become a left \"Artifacts\" tab, while the right workbench carries only needs-your-eyes-now state: question cycles (#15), review intake (#19), and model-pushed live exhibits with attention badges + dismiss. Conversation stays centered."
+    "status": "completed",
+    "detail": "Per the attention-surface ruling (2026-08-18): demote Goal/Scope to a left-rail tab; split \"Panels\" — QA artifact galleries (image-gallery/markdown/metrics) become a left \"Artifacts\" tab, while the right workbench carries only needs-your-eyes-now state: question cycles (#15), review intake (#19), and model-pushed live exhibits with attention badges + dismiss. Conversation stays centered. DONE (wave-B merge): Goal + Artifacts are left-rail capabilities (goal first, target icon; artifacts grid icon with amber unseen-updates badge); right workbench is attention-only (Questions tab; auto-flip preserved); localStorage migrated. Verified in 22-state screenshot run."
   },
   {
     "id": "22",
     "subject": "Codify subagent orchestration: worktrees, bases, merges, gates",
-    "status": "in_progress",
-    "detail": "Write the doctrine (CLAUDE.md agent-ops section + standing orders line) and fix the mechanics. Rules to encode: worktree isolation is standard for parallel implementation agents (in-tree allowed only for single web-only/read-only work); Clyde creates worktrees itself with EXPLICIT base = current HEAD (observed 2026-08-18: harness worktrees forked from session-start HEAD, missing a commit landed minutes earlier); one merge at a time, server-src merges last (each restarts the dev server); conflict protocol (coordinator resolves, agents never merge); gate = typecheck + fixture QA + live-drive before the merge commit; worktrees pruned after merge."
+    "status": "completed",
+    "detail": "Write the doctrine (CLAUDE.md agent-ops section + standing orders line) and fix the mechanics. Rules to encode: worktree isolation is standard for parallel implementation agents (in-tree allowed only for single web-only/read-only work); Clyde creates worktrees itself with EXPLICIT base = current HEAD (observed 2026-08-18: harness worktrees forked from session-start HEAD, missing a commit landed minutes earlier); one merge at a time, server-src merges last (each restarts the dev server); conflict protocol (coordinator resolves, agents never merge); gate = typecheck + fixture QA + live-drive before the merge commit; worktrees pruned after merge. DONE: CLAUDE.md § Agent operations (worktree standard, base pinning, brief contract, merge train, gates, cleanup) + standing-orders Delegate order now points at it. Written from lived mechanics of waves A+B (stale-base footgun, conflict-marker crash-loop avoidance, atomic ff landings)."
   },
   {
     "id": "23",
     "subject": "Agents panel v2: background-agent lifecycle + worktree state",
-    "status": "in_progress",
-    "detail": "The R8 panel model (running until tool_result) breaks for background agents — the spawn ack lands instantly, so duration froze at 0s while agents ran (user report 2026-08-18). v2: treat backgrounded dispatches as running until a completion signal; liveness heartbeat (e.g. agent transcript/worktree mtime via a server poll); per-agent worktree column (branch, base sha, ahead-count, merged/pending); duration that actually ticks; surface the agent's final report text expandably. Server likely needs a dispatch_update event."
+    "status": "completed",
+    "detail": "The R8 panel model (running until tool_result) breaks for background agents — the spawn ack lands instantly, so duration froze at 0s while agents ran (user report 2026-08-18). v2: treat backgrounded dispatches as running until a completion signal; liveness heartbeat (e.g. agent transcript/worktree mtime via a server poll); per-agent worktree column (branch, base sha, ahead-count, merged/pending); duration that actually ticks; surface the agent's final report text expandably. Server likely needs a dispatch_update event. DONE (wave-B merge): dispatch_update event parsed from task-notifications (live + backfill paths share the parser); running = no update AND (no result OR spawn ack); ticking durations, last-activity heartbeat (amber >120s), worktree branch chip, expandable final report. Verified in 10b2 capture; rail badge uses the same rule."
   },
   {
     "id": "20",

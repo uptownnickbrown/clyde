@@ -2,7 +2,7 @@
   {
     "id": "qa-screenshots",
     "kind": "image-gallery",
-    "title": "QA screenshots — question experience wave",
+    "title": "QA screenshots — questions + threads + backfill wave",
     "glob": "qa/screenshots/*.png"
   }
 ]
