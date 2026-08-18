@@ -108,6 +108,7 @@ export class AgentSession {
       prompt: this.input(),
       options: {
         model: this.model,
+        effort: process.env.CLYDE_EFFORT ?? 'xhigh',
         cwd: this.store.projectRoot,
         permissionMode: 'bypassPermissions',
         includePartialMessages: true,
