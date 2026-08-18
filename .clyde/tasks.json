@@ -140,6 +140,12 @@
     "detail": "Third loss mechanism found 2026-08-18 (user report, log-verified): prose sharing an API response with a restart-triggering tool call dies in BOTH the server and the CLI's unflushed transcript — unrecoverable by backfill, even though it streamed to the user's screen. Fix (a) delta journal: the server appends streamed text deltas to sessions/<id>/deltas-<turnId>.log as they arrive (fsync-cheap), deletes on the final assistant_message; on boot, if neither events.jsonl nor the CLI transcript has the turn's tail, recover a provisional assistant_message from the journal (marked provisional). Fix (b) choreography, applied to CLAUDE.md now: the restart-triggering command must be the ONLY content of its message — say anything user-facing in the previous message and let it flush first."
   },
   {
+    "id": "25",
+    "subject": "Model + effort picker in the composer (working, not chrome)",
+    "status": "pending",
+    "detail": "User request 2026-08-18 (screenshot of static fable-5 chip). Web+shared half DONE on branch wip-model-picker: ModelPicker popover in Composer (4 models + alias passthrough, 5 efforts, Apply disabled unless dirty/idle), set_model ClientMessage, Snapshot.effort, store plumbing, styles. REMAINING (server): persist {model,effort} to <sessionDir>/config.json; read at boot into AgentSession(store,bus,model,effort) (ctor gains effort param, start() uses this.effort not env); ws case set_model -> validate against allowlist+current model, save config, rotate session in place (dispose + new AgentSession same store + resume findSdkSessionId()) idle-only, rebroadcast hello; snapshot.effort. Gates: typecheck, fixture (add effort to snapshot + 02c-model-picker capture), live-drive section 6 (switch effort on scratch, verify chip + round-trip). Land server saves per CLAUDE.md choreography."
+  },
+  {
     "id": "20",
     "subject": "Responsive layout pass (Design Vision §5)",
     "status": "pending",
