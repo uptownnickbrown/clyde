@@ -39,7 +39,7 @@ export function TopBar({
     <header className="topbar">
       <div className="topbar-left">
         <span className="brand">
-          <span className="logo">◆</span> Clyde
+          <span className="logo">◆</span> <span className="brand-name">Clyde</span>
         </span>
         <span className="project-name">{projectName}</span>
         {gitStatus && (
@@ -100,7 +100,7 @@ export function TopBar({
             title="Start a fresh conversation — tasks, decisions, and panels persist"
             onClick={() => setConfirmNew(true)}
           >
-            ＋ New session
+            ＋<span className="tb-label"> New session</span>
           </button>
         )}
       </div>

@@ -208,6 +208,52 @@ try {
   await page.waitForTimeout(300);
   await shot('12d-question-answered');
 
+  // 20 — responsive layout pass (Design Vision §5, task #20). Breakpoints:
+  // <1280 medium, <960 narrow (overlay drawers), <680 phone. The checks assert
+  // the behavioral rules; the captures show them.
+
+  // 20a — medium: one auxiliary surface at a time. Entering medium with both
+  // surfaces open auto-collapses the workbench; opening either collapses the other.
+  await page.setViewportSize({ width: 1180, height: 800 });
+  await page.waitForTimeout(300);
+  await page.locator('.wb-expand').click(); // open the workbench → capability panel yields
+  await page.waitForSelector('.right-panel');
+  if (await page.locator('.left-panel').count())
+    throw new Error('medium: capability panel should collapse when the workbench opens');
+  await rail('Tasks'); // open the capability panel → workbench yields
+  await page.waitForSelector('.left-panel');
+  if (await page.locator('.right-panel').count())
+    throw new Error('medium: workbench should collapse when the capability panel opens');
+  await shot('20a-medium');
+
+  // 20b — narrow: the capability panel is an overlay drawer over the full-width
+  // conversation, scrim behind it.
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.waitForTimeout(300); // entering narrow closes aux surfaces (conversation-first)
+  if (await page.locator('.left-panel, .right-panel').count())
+    throw new Error('narrow: aux surfaces should start closed');
+  await rail('Tasks');
+  await page.waitForSelector('.left-panel.drawer');
+  await page.waitForSelector('.scrim');
+  await page.waitForTimeout(250); // slide-in settles
+  await shot('20b-narrow-drawer');
+
+  // 20c — phone: drawers closed, conversation-first, condensed top bar
+  // (no context gauge / cost readout).
+  await page.locator('.scrim').click(); // scrim click closes the drawer
+  await page.waitForTimeout(200);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  if (await page.locator('.left-panel, .right-panel').count())
+    throw new Error('phone: drawers should be closed');
+  if (await page.locator('.mini-gauge').isVisible())
+    throw new Error('phone: context gauge should be hidden');
+  await shot('20c-phone');
+
+  // back to the standard viewport for the dogfood shot
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(200);
+
   // 13 — dogfood: the real dev app, if it is running (non-fatal if not)
   try {
     await page.goto('http://localhost:5173/', { timeout: 3000 });

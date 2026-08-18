@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useClyde } from './store';
 import { QuestionsPanel, deriveQuestions } from './components/Questions';
 import { Conversation } from './components/Conversation';
@@ -34,13 +34,88 @@ const store = {
   set: (k: string, v: string) => localStorage.setItem(k, v),
 };
 
+// Layout modes (Design Vision §5). Priority under constraint: conversation →
+// composer/status → active panel → nav → diagnostics.
+//   wide   (≥1280) — full shell: rail · capability panel · conversation · workbench
+//   medium (<1280) — one auxiliary surface at a time; conversation stays dominant
+//   narrow  (<960) — auxiliary surfaces become overlay drawers over the conversation
+//   phone   (<680) — conversation-first: condensed top bar, drawers near-full-width
+// Breakpoints must match the media queries in styles.css.
+type LayoutMode = 'wide' | 'medium' | 'narrow' | 'phone';
+
+const MODE_QUERIES: Array<[LayoutMode, string]> = [
+  ['phone', '(max-width: 679px)'],
+  ['narrow', '(max-width: 959px)'],
+  ['medium', '(max-width: 1279px)'],
+];
+
+function currentMode(): LayoutMode {
+  for (const [m, q] of MODE_QUERIES) if (window.matchMedia(q).matches) return m;
+  return 'wide';
+}
+
+function useLayoutMode(): LayoutMode {
+  const [mode, setMode] = useState<LayoutMode>(currentMode);
+  useEffect(() => {
+    const lists = MODE_QUERIES.map(([, q]) => window.matchMedia(q));
+    const onChange = () => setMode(currentMode());
+    for (const l of lists) l.addEventListener('change', onChange);
+    return () => {
+      for (const l of lists) l.removeEventListener('change', onChange);
+    };
+  }, []);
+  return mode;
+}
+
+// Initial aux-surface visibility: the persisted wide-mode layout, degraded to the
+// current mode's constraint — medium shows at most one surface (the capability
+// panel wins the tie), drawer modes start closed (conversation-first).
+function initialPanels(): { left: boolean; right: boolean } {
+  const left = store.get('clyde.leftOpen', '1') === '1';
+  const right = store.get('clyde.rightOpen', '1') === '1';
+  const m = currentMode();
+  if (m === 'wide') return { left, right };
+  if (m === 'medium') return { left, right: left ? false : right };
+  return { left: false, right: false };
+}
+
 export default function App() {
   const { state, send } = useClyde();
   const [capability, setCapability] = useState<Capability>(() => store.get('clyde.capability', 'tasks') as Capability);
-  const [leftOpen, setLeftOpen] = useState(() => store.get('clyde.leftOpen', '1') === '1');
+  const [leftOpen, setLeftOpen] = useState(() => initialPanels().left);
   const [leftW, setLeftW] = useState(() => Number(store.get('clyde.leftW', '300')) || 300);
-  const [rightOpen, setRightOpen] = useState(() => store.get('clyde.rightOpen', '1') === '1');
+  const [rightOpen, setRightOpen] = useState(() => initialPanels().right);
   const [rightW, setRightW] = useState(() => Number(store.get('clyde.rightW', '340')) || 340);
+
+  const mode = useLayoutMode();
+  const overlay = mode === 'narrow' || mode === 'phone';
+  // Below wide, open/close actions are transient — localStorage keeps describing
+  // the wide-mode layout only, so widening the window restores the user's layout.
+  const persistOpen = (key: 'clyde.leftOpen' | 'clyde.rightOpen', open: boolean) => {
+    if (mode === 'wide') store.set(key, open ? '1' : '0');
+  };
+
+  // Mode transitions re-apply each mode's constraint (React state coordination,
+  // not CSS hiding — panel state must stay coherent).
+  const prevMode = useRef(mode);
+  useEffect(() => {
+    if (prevMode.current === mode) return;
+    const from = prevMode.current;
+    prevMode.current = mode;
+    if (mode === 'wide') {
+      setLeftOpen(store.get('clyde.leftOpen', '1') === '1');
+      setRightOpen(store.get('clyde.rightOpen', '1') === '1');
+    } else if (mode === 'medium') {
+      // One auxiliary surface at a time; the capability panel wins the tie
+      // (the workbench reopens itself when it needs attention).
+      if (leftOpen && rightOpen) setRightOpen(false);
+    } else if (from === 'wide' || from === 'medium') {
+      // Entering drawer territory: conversation-first, drawers closed.
+      // (narrow↔phone transitions keep an open drawer open.)
+      setLeftOpen(false);
+      setRightOpen(false);
+    }
+  }, [mode, leftOpen, rightOpen]);
   const [wbTab, setWbTab] = useState<WbTab>(() => {
     // Migration: 'goal'/'panels' moved to the left rail as capabilities — any
     // stored workbench default falls back to the one remaining tab.
@@ -72,13 +147,14 @@ export default function App() {
   const selectCapability = (c: Capability) => {
     if (c === capability && leftOpen) {
       setLeftOpen(false);
-      store.set('clyde.leftOpen', '0');
+      persistOpen('clyde.leftOpen', false);
       return;
     }
     setCapability(c);
     setLeftOpen(true);
     store.set('clyde.capability', c);
-    store.set('clyde.leftOpen', '1');
+    persistOpen('clyde.leftOpen', true);
+    if (mode !== 'wide') setRightOpen(false); // one auxiliary surface at a time
   };
 
   // Tasks currently delegated: dispatches naming a task that are still running (R8),
@@ -102,6 +178,8 @@ export default function App() {
     if (!pendingQuestionId) return;
     setWbTab('questions');
     setRightOpen(true);
+    // Below wide the workbench displaces the capability panel (one aux surface).
+    if (currentMode() !== 'wide') setLeftOpen(false);
   }, [pendingQuestionId]);
 
   // Artifacts attention: amber count of panels_updated events the user hasn't
@@ -146,7 +224,7 @@ export default function App() {
 
         {leftOpen && (
           <>
-            <aside className="left-panel" style={{ width: leftW }}>
+            <aside className={`left-panel${overlay ? ' drawer' : ''}`} style={overlay ? undefined : { width: leftW }}>
               <header className="panel-head">{capabilityLabel(capability)}</header>
               <div className="panel-scroll">
                 {capability === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
@@ -169,7 +247,7 @@ export default function App() {
                 {capability === 'logs' && <LogsPanel />}
               </div>
             </aside>
-            <div className="resizer" onMouseDown={dragLeft} title="Drag to resize" />
+            {!overlay && <div className="resizer" onMouseDown={dragLeft} title="Drag to resize" />}
           </>
         )}
 
@@ -187,8 +265,8 @@ export default function App() {
 
         {rightOpen ? (
           <>
-            <div className="resizer" onMouseDown={dragRight} title="Drag to resize" />
-            <aside className="right-panel" style={{ width: rightW }}>
+            {!overlay && <div className="resizer" onMouseDown={dragRight} title="Drag to resize" />}
+            <aside className={`right-panel${overlay ? ' drawer' : ''}`} style={overlay ? undefined : { width: rightW }}>
               <nav className="wb-tabs">
                 {(['questions'] as WbTab[]).map((t) => (
                   <button
@@ -208,7 +286,7 @@ export default function App() {
                   title="Collapse the workbench"
                   onClick={() => {
                     setRightOpen(false);
-                    store.set('clyde.rightOpen', '0');
+                    persistOpen('clyde.rightOpen', false);
                   }}
                 >
                   ⟩
@@ -225,11 +303,22 @@ export default function App() {
             title="Open the workbench"
             onClick={() => {
               setRightOpen(true);
-              store.set('clyde.rightOpen', '1');
+              persistOpen('clyde.rightOpen', true);
+              if (mode !== 'wide') setLeftOpen(false); // one auxiliary surface at a time
             }}
           >
             ⟨
           </button>
+        )}
+
+        {overlay && (leftOpen || rightOpen) && (
+          <div
+            className="scrim"
+            onClick={() => {
+              setLeftOpen(false);
+              setRightOpen(false);
+            }}
+          />
         )}
       </div>
     </div>
