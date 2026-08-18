@@ -1,0 +1,7 @@
+{
+  "typecheck": "pass",
+  "web build": "pass",
+  "screenshot states": 9,
+  "events replayed": 27,
+  "wire events defined": 14
+}
