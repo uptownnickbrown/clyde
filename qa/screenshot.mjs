@@ -77,20 +77,36 @@ try {
   await page.locator('.tabs button', { hasText: 'context' }).click();
   await shot('08-context-tab');
 
-  // 9 — goal tab scrolled to the bottom: SCOPE.md's risks table must render as a table (GFM)
+  // 9 — expanded commit card in the git timeline
+  await page.locator('.commits li').first().click();
+  await page.waitForSelector('.commit-detail pre');
+  await shot('09-commit-expanded');
+  await page.locator('.commits li').first().click();
+
+  // 10 — reviews tab with burn-down
+  await page.locator('.tabs button', { hasText: 'reviews' }).click();
+  await page.waitForTimeout(500);
+  await shot('10-reviews-tab');
+
+  // 11 — logs tab
+  await page.locator('.tabs button', { hasText: 'logs' }).click();
+  await page.waitForTimeout(400);
+  await shot('11-logs-tab');
+
+  // 12 — goal tab scrolled to the bottom: SCOPE.md's risks table must render as a table (GFM)
   await page.locator('.tabs button', { hasText: 'goal' }).click();
   await page.evaluate(() => {
     const rail = document.querySelector('.right-rail');
     rail.scrollTo(0, rail.scrollHeight);
   });
   await page.waitForTimeout(300);
-  await shot('09-goal-scope-table');
+  await shot('12-goal-scope-table');
 
-  // 10 — dogfood: the real dev app, if it is running (non-fatal if not)
+  // 13 — dogfood: the real dev app, if it is running (non-fatal if not)
   try {
     await page.goto('http://localhost:5173/', { timeout: 3000 });
     await page.waitForTimeout(1500);
-    await shot('10-live-dogfood');
+    await shot('13-live-dogfood');
   } catch {
     console.log('  – live dev app not reachable, skipped dogfood shot');
   }

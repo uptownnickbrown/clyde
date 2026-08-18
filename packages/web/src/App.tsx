@@ -7,15 +7,33 @@ import {
   ContextPanel,
   GitPanel,
   GoalPanel,
+  LogsPanel,
   PushedPanels,
+  ReviewsPanel,
   TasksPanel,
 } from './components/Sidebars';
 
-type RightTab = 'goal' | 'panels' | 'activity' | 'context';
+type RightTab = 'goal' | 'panels' | 'reviews' | 'activity' | 'context' | 'logs';
 
 export default function App() {
   const { state, send } = useClyde();
   const [tab, setTab] = useState<RightTab>('goal');
+  const [railW, setRailW] = useState(() => Number(localStorage.getItem('clyde.rightRailWidth')) || 290);
+
+  const startRailDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const move = (ev: MouseEvent) => {
+      const w = Math.min(720, Math.max(240, window.innerWidth - ev.clientX));
+      setRailW(w);
+      localStorage.setItem('clyde.rightRailWidth', String(w));
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
 
   const pct = state.contextTokens ? Math.min(100, (state.contextTokens / 1_000_000) * 100) : 0;
 
@@ -47,9 +65,10 @@ export default function App() {
           <Composer status={state.status} queue={state.queue} send={send} />
         </main>
 
-        <aside className="right-rail">
+        <div className="rail-resizer" onMouseDown={startRailDrag} title="Drag to resize" />
+        <aside className="right-rail" style={{ width: railW }}>
           <nav className="tabs">
-            {(['goal', 'panels', 'activity', 'context'] as RightTab[]).map((t) => (
+            {(['goal', 'panels', 'reviews', 'activity', 'context', 'logs'] as RightTab[]).map((t) => (
               <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
                 {t}
               </button>
@@ -57,7 +76,9 @@ export default function App() {
           </nav>
           {tab === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
           {tab === 'panels' && <PushedPanels panels={state.panels} />}
+          {tab === 'reviews' && <ReviewsPanel />}
           {tab === 'activity' && <ActivityPanel events={state.events} />}
+          {tab === 'logs' && <LogsPanel />}
           {tab === 'context' && (
             <ContextPanel
               events={state.events}

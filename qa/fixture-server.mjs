@@ -46,6 +46,18 @@ export function startFixtureServer(port = 4123) {
       return;
     }
 
+    if (url.pathname === '/api/logs') {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end(FIXTURE_LOGS);
+      return;
+    }
+
+    if (url.pathname === '/api/commit') {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end(FIXTURE_COMMIT);
+      return;
+    }
+
     if (url.pathname === '/api/gallery') {
       const glob = url.searchParams.get('glob') ?? '';
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -90,6 +102,39 @@ export function startFixtureServer(port = 4123) {
     });
   });
 }
+
+const FIXTURE_LOGS = [
+  '{"ts":"2026-08-18T14:03:12.100Z","level":"info","component":"session","message":"session started (resume)"}',
+  '{"ts":"2026-08-18T14:03:12.140Z","level":"debug","component":"sdk","message":"message: system/init"}',
+  '{"ts":"2026-08-18T14:04:02.310Z","level":"info","component":"git","message":"new commit c5fcbbe linked to message a2"}',
+  '{"ts":"2026-08-18T14:05:41.002Z","level":"warn","component":"ws","message":"client reconnected after 1.5s"}',
+  '{"ts":"2026-08-18T14:06:12.550Z","level":"debug","component":"sdk","message":"message: stream_event"}',
+  '{"ts":"2026-08-18T14:07:09.912Z","level":"error","component":"store","message":"events.jsonl append retried (EBUSY)"}',
+  '{"ts":"2026-08-18T14:08:00.001Z","level":"info","component":"panels","message":"panel qa-screenshots updated"}',
+].join('\n');
+
+const FIXTURE_COMMIT = `commit c5fcbbe41d2a
+Author: Nicholas Brown <nicholas.tyler.brown@gmail.com>
+Date:   Tue Aug 18 14:06:00 2026 -0700
+
+    Walking skeleton: Agent SDK session streaming end-to-end to React UI
+
+    One long-lived query() in streaming-input mode; server translates the
+    SDK stream into Clyde wire events and appends to events.jsonl.
+
+ packages/server/src/agentSession.ts | 402 ++++++++++++++++++++
+ packages/shared/src/index.ts        | 126 +++++++
+ packages/web/src/App.tsx            |  73 ++++
+ 3 files changed, 601 insertions(+)
+
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/shared/src/index.ts
+@@ -0,0 +1,126 @@
++// Clyde wire protocol + domain types
++export type AgentStatus = 'idle' | 'working' | 'disconnected';
+`;
 
 /** Same minimal glob the real server supports: "dir/*.ext"-style, sorted by name. */
 function expandGlob(root, glob) {

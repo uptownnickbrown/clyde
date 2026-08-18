@@ -58,6 +58,7 @@ An IDE makes you instantly oriented in a *codebase*: file tree, editor at center
 5. **Context meter (v1: visualize + re-inject).** Per-session token gauge; per-message status in the minimap (raw / compacted / evicted, best-effort); a file list showing which project files the agent has read and their staleness. One-click **"pull back in"**: re-quote a span or queue a file re-read next turn. No true eviction in v1 (v2 spike: transcript-rewrite-and-fork).
 6. **Activity feed.** The full tool-call record — every tool call, subagent lifecycle, command output — timestamped and cross-linked to its position in the conversation. This is where the noise went.
 7. **File tree.** Standard tree view, decorated with context badges (read by agent / edited by agent / staleness). Not a code editor; clicking a file shows a read-only view. Real editing happens in your real editor.
+8. **Reviews.** Batch feedback from a testing wave is a first-class noun: one markdown checklist per wave in `.clyde/reviews/`, items optionally quoting screenshots. The agent triages every item — accept into a task, fix and check off with the commit sha, or push back with reasons — never silently drop. The panel renders each review with a burn-down; the user verifies checked items. (Later: items thread-anchorable into the conversation.)
 
 ### Orientation features
 

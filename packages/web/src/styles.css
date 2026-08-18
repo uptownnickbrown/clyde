@@ -160,11 +160,22 @@ button:disabled { opacity: 0.4; cursor: default; }
 .task-in_progress .task-icon { color: var(--amber); }
 .task-completed .task-icon { color: var(--green); }
 
-.commits li { padding: 6px 0; border-bottom: 1px solid var(--border); }
-.commits li.linked { cursor: pointer; }
-.commits li.linked:hover .commit-subject { color: var(--accent); }
+.commits li { padding: 6px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.commits li:hover .commit-subject { color: var(--accent); }
 .commit-line { display: flex; justify-content: space-between; }
 .commit-subject { font-size: 12.5px; margin-top: 2px; }
+
+.commit-detail { margin-top: 6px; cursor: default; }
+.commit-detail pre {
+  background: var(--bg-raised); border-radius: 6px; padding: 8px; margin: 4px 0;
+  font-family: var(--mono); font-size: 11px; overflow-x: auto; white-space: pre-wrap;
+}
+.commit-patch { max-height: 320px; overflow-y: auto; }
+.commit-detail-actions { display: flex; gap: 14px; margin: 4px 0; }
+button.linklike { background: none; border: none; color: var(--accent); font-size: 12px; padding: 0; }
+
+.rail-resizer { width: 5px; flex-shrink: 0; cursor: col-resize; }
+.rail-resizer:hover { background: var(--accent-dim); }
 
 .tabs { display: flex; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-panel); z-index: 2; }
 .tabs button {
@@ -189,6 +200,26 @@ button:disabled { opacity: 0.4; cursor: default; }
 .metrics { width: 100%; border-collapse: collapse; font-size: 13px; }
 .metrics td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
 .metrics td:last-child { font-family: var(--mono); text-align: right; }
+
+.logs-panel { padding: 8px 12px; }
+.logs-toggle { font-size: 12px; color: var(--text-dim); display: block; margin-bottom: 6px; }
+.log-row {
+  display: flex; gap: 8px; padding: 2px 0; font-size: 11.5px; font-family: var(--mono);
+  border-bottom: 1px solid var(--bg-raised); align-items: baseline;
+}
+.log-row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-component { color: var(--accent); flex-shrink: 0; }
+.log-warn { color: var(--amber); }
+.log-error { color: var(--red); }
+.log-debug { color: var(--text-dim); }
+
+.reviews-panel { font-size: 13px; }
+.reviews-panel .panel h1 { font-size: 15px; }
+.reviews-panel .panel h2 { font-size: 13.5px; }
+.review-burndown { margin-bottom: 10px; }
+.reviews-panel ul { padding-left: 18px; }
+.reviews-panel li { margin: 6px 0; }
+.reviews-panel input[type='checkbox'] { accent-color: var(--green); }
 
 .gauge-bar { height: 10px; background: var(--bg-raised); border-radius: 5px; overflow: hidden; }
 .gauge-label { font-size: 12px; color: var(--text-dim); margin-top: 6px; }

@@ -22,20 +22,14 @@ export function TasksPanel({ tasks }: { tasks: TaskItem[] }) {
 }
 
 export function GitPanel({ commits }: { commits: CommitInfo[] }) {
+  const [openSha, setOpenSha] = useState<string | null>(null);
   return (
     <section className="panel">
       <h3>Git timeline</h3>
       {commits.length === 0 && <div className="empty">no commits yet</div>}
       <ul className="commits">
         {commits.map((c) => (
-          <li
-            key={c.sha}
-            className={c.messageId ? 'linked' : ''}
-            title={c.messageId ? 'Jump to conversation' : undefined}
-            onClick={() => {
-              if (c.messageId) document.getElementById(`msg-${c.messageId}`)?.scrollIntoView({ behavior: 'smooth' });
-            }}
-          >
+          <li key={c.sha} onClick={() => setOpenSha(openSha === c.sha ? null : c.sha)}>
             <div className="commit-line">
               <span className="commit-sha">{c.sha.slice(0, 7)}</span>
               <span className="diffstat">
@@ -43,10 +37,49 @@ export function GitPanel({ commits }: { commits: CommitInfo[] }) {
               </span>
             </div>
             <div className="commit-subject">{c.subject}</div>
+            {openSha === c.sha && <CommitDetail commit={c} />}
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+function CommitDetail({ commit }: { commit: CommitInfo }) {
+  const [text, setText] = useState<string | null>(null);
+  const [showPatch, setShowPatch] = useState(false);
+  useEffect(() => {
+    fetch(`/api/commit?sha=${commit.sha}`)
+      .then((r) => r.text())
+      .then(setText)
+      .catch(() => setText('failed to load commit'));
+  }, [commit.sha]);
+  if (text === null) return <div className="commit-detail empty">loading…</div>;
+  const patchIdx = text.indexOf('\ndiff --git');
+  const stat = patchIdx >= 0 ? text.slice(0, patchIdx) : text;
+  const patch = patchIdx >= 0 ? text.slice(patchIdx + 1) : null;
+  return (
+    <div className="commit-detail" onClick={(e) => e.stopPropagation()}>
+      <pre className="commit-stat">{stat.trim()}</pre>
+      <div className="commit-detail-actions">
+        {commit.messageId && (
+          <button
+            className="linklike"
+            onClick={() =>
+              document.getElementById(`msg-${commit.messageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }
+          >
+            ↷ jump to conversation
+          </button>
+        )}
+        {patch && (
+          <button className="linklike" onClick={() => setShowPatch(!showPatch)}>
+            {showPatch ? 'hide patch' : 'show patch'}
+          </button>
+        )}
+      </div>
+      {showPatch && patch && <pre className="commit-patch">{patch.slice(0, 30000)}</pre>}
+    </div>
   );
 }
 
@@ -172,6 +205,107 @@ function Metrics({ path }: { path: string }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+interface LogLine {
+  ts?: string;
+  level?: string;
+  component?: string;
+  message?: string;
+}
+
+export function LogsPanel() {
+  const [lines, setLines] = useState<LogLine[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+  useEffect(() => {
+    const load = () =>
+      fetch('/api/logs?tail=300')
+        .then((r) => r.text())
+        .then((t) =>
+          setLines(
+            t
+              .split('\n')
+              .filter(Boolean)
+              .map((l) => {
+                try {
+                  return JSON.parse(l) as LogLine;
+                } catch {
+                  return { message: l };
+                }
+              }),
+          ),
+        )
+        .catch(() => setLines([]));
+    load();
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, []);
+  const visible = lines.filter((l) => showDebug || l.level !== 'debug');
+  return (
+    <div className="logs-panel">
+      <label className="logs-toggle">
+        <input type="checkbox" checked={showDebug} onChange={(e) => setShowDebug(e.target.checked)} /> show debug
+      </label>
+      {visible.length === 0 && <div className="empty">no log lines</div>}
+      {visible
+        .slice(-200)
+        .reverse()
+        .map((l, i) => (
+          <div key={i} className={`log-row log-${l.level ?? 'info'}`}>
+            <span className="act-time">{l.ts?.slice(11, 19) ?? ''}</span>
+            <span className="log-component">{l.component ?? ''}</span>
+            <span>{l.message ?? ''}</span>
+          </div>
+        ))}
+    </div>
+  );
+}
+
+export function ReviewsPanel() {
+  const [files, setFiles] = useState<string[]>([]);
+  useEffect(() => {
+    fetch(`/api/gallery?glob=${encodeURIComponent('.clyde/reviews/*.md')}`)
+      .then((r) => r.json())
+      .then(setFiles)
+      .catch(() => setFiles([]));
+  }, []);
+  return (
+    <div className="reviews-panel">
+      {files.length === 0 && (
+        <div className="empty">
+          No reviews yet — batch feedback lands as markdown checklists in <code>.clyde/reviews/</code>.
+        </div>
+      )}
+      {[...files].reverse().map((f) => (
+        <ReviewCard key={f} path={f} />
+      ))}
+    </div>
+  );
+}
+
+function ReviewCard({ path }: { path: string }) {
+  const [text, setText] = useState('');
+  useEffect(() => {
+    fetch(`/api/project-file?path=${encodeURIComponent(path)}`)
+      .then((r) => r.text())
+      .then(setText)
+      .catch(() => setText(''));
+  }, [path]);
+  const done = (text.match(/^- \[x\]/gim) ?? []).length;
+  const total = done + (text.match(/^- \[ \]/gm) ?? []).length;
+  return (
+    <section className="panel">
+      <div className="review-burndown">
+        <div className="gauge-bar">
+          <div className="gauge-fill" style={{ width: total ? `${(done / total) * 100}%` : '0%' }} />
+        </div>
+        <div className="gauge-label">
+          {done}/{total} addressed · {path.split('/').pop()}
+        </div>
+      </div>
+      <Md>{text}</Md>
+    </section>
   );
 }
 
