@@ -3,5 +3,6 @@ dist/
 qa/screenshots/
 .clyde/uploads/
 .clyde/logs/
+.clyde/sessions/
 *.tsbuildinfo
 .DS_Store
