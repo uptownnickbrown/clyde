@@ -69,8 +69,8 @@
   {
     "id": "12",
     "subject": "Goal doc editable in place, agent notified on save (R3 remainder)",
-    "status": "pending",
-    "detail": "Edit SCOPE.md in the goal tab → save to file → agent notified it changed. Needs a save endpoint + file-watch note into the conversation."
+    "status": "in_progress",
+    "detail": "Edit SCOPE.md in the goal tab → save to file → agent notified it changed. Needs a save endpoint + file-watch note into the conversation. Riding with the #21 agent (one unit: the Goal panel moves left AND becomes editable)."
   },
   {
     "id": "13",
@@ -113,24 +113,24 @@
     "id": "19",
     "subject": "Review ceremony: intake mode → distill → ask → Tasks with provenance",
     "status": "pending",
-    "detail": "Per the intake-ceremony decision (DECISIONS.md 2026-08-18). Flow: (1) \"Start review\" composer mode AND agent auto-detect of unprompted feedback dumps; (2) raw dump saved verbatim to .clyde/reviews/<date>-<slug>.md as provenance; (3) agent distills to numbered items, echoes them back; (4) clarifying questions via AskUserQuestion (#15 is a prerequisite); (5) confirmed items become Tasks carrying source (review file + item), batch id, and a declined-with-reasons state (TaskItem additions in shared); (6) Reviews panel becomes a burn-down lens over task batches instead of parsing markdown checkboxes. Subsumes the data model of #13 — do them together."
+    "detail": "Per the intake-ceremony decision (DECISIONS.md 2026-08-18). Flow: (1) \"Start review\" composer mode AND agent auto-detect of unprompted feedback dumps; (2) raw dump saved verbatim to .clyde/reviews/<date>-<slug>.md as provenance; (3) agent distills to numbered items, echoes them back; (4) clarifying questions via AskUserQuestion (#15 is a prerequisite); (5) confirmed items become Tasks carrying source (review file + item), batch id, and a declined-with-reasons state (TaskItem additions in shared); (6) Reviews panel becomes a burn-down lens over task batches instead of parsing markdown checkboxes. Subsumes the data model of #13 — do them together. DESIGN SETTLED (question-card-confirm ruling, 2026-08-18): shared TaskItem += source?:{review,item}, batch?:string, status \"declined\" + declineReason?. Wire: send_message += reviewIntake?; composer gains a Start-review mode. Server: intake message saved verbatim to .clyde/reviews/<date>-<slug>.md (filename = batch id) + ceremony instructions injected. Agent flow: distill -> numbered checklist echo in conversation -> batched clarifying AskUserQuestions -> ONE multiSelect question card to confirm items (unchecked = declined; reasons captured) -> tasks written to tasks.json with provenance -> review file annotated. Reviews panel becomes a burn-down lens over task batches (completed+declined/total, raw-file link); legacy markdown checklists keep rendering. Standing-orders ceremony section at implementation time."
   },
   {
     "id": "21",
     "subject": "Workbench restructure: attention surface right, reference tabs left",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "Per the attention-surface ruling (2026-08-18): demote Goal/Scope to a left-rail tab; split \"Panels\" — QA artifact galleries (image-gallery/markdown/metrics) become a left \"Artifacts\" tab, while the right workbench carries only needs-your-eyes-now state: question cycles (#15), review intake (#19), and model-pushed live exhibits with attention badges + dismiss. Conversation stays centered."
   },
   {
     "id": "22",
     "subject": "Codify subagent orchestration: worktrees, bases, merges, gates",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "Write the doctrine (CLAUDE.md agent-ops section + standing orders line) and fix the mechanics. Rules to encode: worktree isolation is standard for parallel implementation agents (in-tree allowed only for single web-only/read-only work); Clyde creates worktrees itself with EXPLICIT base = current HEAD (observed 2026-08-18: harness worktrees forked from session-start HEAD, missing a commit landed minutes earlier); one merge at a time, server-src merges last (each restarts the dev server); conflict protocol (coordinator resolves, agents never merge); gate = typecheck + fixture QA + live-drive before the merge commit; worktrees pruned after merge."
   },
   {
     "id": "23",
     "subject": "Agents panel v2: background-agent lifecycle + worktree state",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "The R8 panel model (running until tool_result) breaks for background agents — the spawn ack lands instantly, so duration froze at 0s while agents ran (user report 2026-08-18). v2: treat backgrounded dispatches as running until a completion signal; liveness heartbeat (e.g. agent transcript/worktree mtime via a server poll); per-agent worktree column (branch, base sha, ahead-count, merged/pending); duration that actually ticks; surface the agent's final report text expandably. Server likely needs a dispatch_update event."
   },
   {
