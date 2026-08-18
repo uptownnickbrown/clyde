@@ -50,6 +50,11 @@ parallel in-tree agents collide on hotspot files (`App.tsx`, `Sidebars.tsx`,
   broken intermediate crash-loops the server with no auto-resume). Typecheck +
   offline checks there, then land with `git merge --ff-only merge-train` in the
   main tree: one atomic restart, backfill + auto-resume carry the turn over.
+  The landing command must be the ONLY content of its message — prose sharing
+  an API response with a restart-triggering call dies in both the server and
+  the CLI's unflushed transcript, streams to the user, then vanishes, and no
+  backfill can recover it (verified loss 2026-08-18). Say everything
+  user-facing in the previous message and let it flush first.
 - **Gate before closing tasks**: typecheck, fixture screenshots
   (`node qa/screenshot.mjs`), and a live-drive pass (`qa/live-drive.mjs` against
   a scratch project on port 4141) whenever server behavior changed.

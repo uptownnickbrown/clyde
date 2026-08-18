@@ -134,6 +134,12 @@
     "detail": "The R8 panel model (running until tool_result) breaks for background agents — the spawn ack lands instantly, so duration froze at 0s while agents ran (user report 2026-08-18). v2: treat backgrounded dispatches as running until a completion signal; liveness heartbeat (e.g. agent transcript/worktree mtime via a server poll); per-agent worktree column (branch, base sha, ahead-count, merged/pending); duration that actually ticks; surface the agent's final report text expandably. Server likely needs a dispatch_update event. DONE (wave-B merge): dispatch_update event parsed from task-notifications (live + backfill paths share the parser); running = no update AND (no result OR spawn ack); ticking durations, last-activity heartbeat (amber >120s), worktree branch chip, expandable final report. Verified in 10b2 capture; rail badge uses the same rule."
   },
   {
+    "id": "24",
+    "subject": "Close the last loss window: delta journal + restart choreography",
+    "status": "pending",
+    "detail": "Third loss mechanism found 2026-08-18 (user report, log-verified): prose sharing an API response with a restart-triggering tool call dies in BOTH the server and the CLI's unflushed transcript — unrecoverable by backfill, even though it streamed to the user's screen. Fix (a) delta journal: the server appends streamed text deltas to sessions/<id>/deltas-<turnId>.log as they arrive (fsync-cheap), deletes on the final assistant_message; on boot, if neither events.jsonl nor the CLI transcript has the turn's tail, recover a provisional assistant_message from the journal (marked provisional). Fix (b) choreography, applied to CLAUDE.md now: the restart-triggering command must be the ONLY content of its message — say anything user-facing in the previous message and let it flush first."
+  },
+  {
     "id": "20",
     "subject": "Responsive layout pass (Design Vision §5)",
     "status": "pending",
