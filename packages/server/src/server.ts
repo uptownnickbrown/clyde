@@ -18,8 +18,9 @@ const MIME: Record<string, string> = {
   '.md': 'text/markdown',
 };
 
-export async function startServer(projectRoot: string, port: number) {
-  const store = new ClydeStore(projectRoot);
+export async function startServer(projectRoot: string, port: number, freshSession = false) {
+  const resumeId = freshSession ? null : ClydeStore.latestSessionId(projectRoot);
+  const store = new ClydeStore(projectRoot, resumeId ?? undefined);
   const clients = new Set<WebSocket>();
 
   const send = (ws: WebSocket, msg: ServerMessage) => {
@@ -37,7 +38,8 @@ export async function startServer(projectRoot: string, port: number) {
   };
 
   const session = new AgentSession(store, bus);
-  session.start();
+  const sdkSessionId = resumeId ? store.findSdkSessionId() : null;
+  session.start(sdkSessionId ?? undefined);
 
   const webDist = findWebDist();
 
@@ -127,7 +129,12 @@ export async function startServer(projectRoot: string, port: number) {
   httpServer.listen(port, () => {
     console.log(`\n  Clyde — ${path.basename(projectRoot)}`);
     console.log(`  UI:      http://localhost:${port}${webDist ? '' : '  (no build; use Vite dev server)'}`);
-    console.log(`  Project: ${projectRoot}\n`);
+    console.log(`  Project: ${projectRoot}`);
+    console.log(
+      resumeId
+        ? `  Session: resumed ${resumeId}${sdkSessionId ? ` (sdk ${sdkSessionId.slice(0, 8)})` : ' (no sdk session to resume)'}\n`
+        : `  Session: new ${store.sessionId}\n`,
+    );
   });
 }
 

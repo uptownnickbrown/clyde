@@ -77,7 +77,7 @@ export class AgentSession {
     });
   }
 
-  start() {
+  start(resumeSdkSessionId?: string) {
     void this.git.start();
     const clydeTools = createSdkMcpServer({
       name: 'clyde',
@@ -109,6 +109,7 @@ export class AgentSession {
       options: {
         model: this.model,
         effort: process.env.CLYDE_EFFORT ?? 'xhigh',
+        ...(resumeSdkSessionId ? { resume: resumeSdkSessionId } : {}),
         cwd: this.store.projectRoot,
         permissionMode: 'bypassPermissions',
         includePartialMessages: true,

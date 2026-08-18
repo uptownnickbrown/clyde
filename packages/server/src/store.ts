@@ -13,6 +13,25 @@ export class ClydeStore {
   private tasksPath: string;
   private panelsPath: string;
 
+  /** Most recent session with an event log, or null — the resume target. */
+  static latestSessionId(projectRoot: string): string | null {
+    const dir = path.join(projectRoot, '.clyde', 'sessions');
+    if (!fs.existsSync(dir)) return null;
+    const ids = fs
+      .readdirSync(dir)
+      .filter((d) => fs.existsSync(path.join(dir, d, 'events.jsonl')))
+      .sort();
+    return ids[ids.length - 1] ?? null;
+  }
+
+  /** The SDK's session id, recovered from the event log for `resume`. */
+  findSdkSessionId(): string | null {
+    for (const e of this.loadEvents().reverse()) {
+      if (e.type === 'session_started' && e.sdkSessionId) return e.sdkSessionId;
+    }
+    return null;
+  }
+
   constructor(readonly projectRoot: string, sessionId?: string) {
     this.clydeDir = path.join(projectRoot, '.clyde');
     this.sessionId = sessionId ?? new Date().toISOString().replace(/[:.]/g, '-');
