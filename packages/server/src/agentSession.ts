@@ -20,11 +20,13 @@ import { ClydeStore } from './store.js';
 import { GitWatcher } from './git.js';
 import { slog } from './log.js';
 import {
+  dispatchUpdateFromSystemNotification,
   parseSidebarMarker,
-  parseTaskNotifications,
   planBackfill,
   planJournalRecovery,
   previewOf,
+  readTaskOutputReport,
+  scanTaskNotifications,
   transcriptPathFor,
   truncate,
 } from './backfill.js';
@@ -184,6 +186,11 @@ export class AgentSession {
   private git: GitWatcher;
   /** TaskCreate tool_use ids awaiting their result, mapped to provisional task ids. */
   private pendingTaskCreates = new Map<string, string>();
+  /** Harness task id → the dispatch's tool_use id, learned from task_started /
+   *  task_progress. A task_notification that omits tool_use_id correlates through
+   *  this; process-local by design (a dispatch outlives the map only across a
+   *  restart, and by then the transcript sweep in backfill is the recovery path). */
+  private taskIdToToolUseId = new Map<string, string>();
   /** Blocking AskUserQuestion calls awaiting a user answer, keyed by question id. */
   private pendingQuestions = new Map<string, { questions: Question[]; resolve: (r: unknown) => void }>();
   /** Blocking request_review calls awaiting a verdict, keyed by exhibit id. Live
@@ -998,6 +1005,17 @@ export class AgentSession {
             { sdkUuid: msg.uuid },
           );
           if (this.status === 'compacting') this.setStatus('idle');
+        } else if (msg.subtype === 'task_started' || msg.subtype === 'task_progress') {
+          // Bookends that name both ids — the only place the task-id → tool-use-id
+          // mapping can be learned before a notification needs it.
+          if (typeof msg.task_id === 'string' && typeof msg.tool_use_id === 'string') {
+            this.taskIdToToolUseId.set(msg.task_id, msg.tool_use_id);
+          }
+        } else if (msg.subtype === 'task_notification') {
+          // THE live completion signal for a background dispatch (task #38). Before
+          // this, only the transcript's user-message form was handled — which the
+          // running server never receives — so every background card ticked forever.
+          this.handleTaskNotification(msg);
         }
         break;
       }
@@ -1074,12 +1092,16 @@ export class AgentSession {
             }
           }
         }
-        // Background-agent completions: the harness injects a user message whose
-        // text carries a <task-notification> block (string content on the wire) —
-        // translate it into dispatch_update. These never leak into the document as
-        // user_message events: translate() only emits user_message from Clyde's own
-        // queue (deliver/deliverMidTurn), never from the SDK stream, so no
-        // suppression is needed.
+        // Background-agent completions, TEXT form: the harness injects a user message
+        // whose text carries a <task-notification> block (string content on the
+        // wire). Current CLIs deliver the completion as system/task_notification
+        // instead and this never fires, but it stays as the belt to that braces —
+        // dispatch_update is idempotent (exact toolUseId, latest wins), so handling
+        // both forms costs nothing and losing the signal costs a card that ticks
+        // forever. These never leak into the document as user_message events:
+        // translate() only emits user_message from Clyde's own queue
+        // (deliver/deliverMidTurn), never from the SDK stream, so no suppression is
+        // needed.
         const text =
           typeof content === 'string'
             ? content
@@ -1089,12 +1111,19 @@ export class AgentSession {
                   .map((b: any) => b.text)
                   .join('\n')
               : '';
-        for (const body of parseTaskNotifications(text)) {
-          slog('session', 'info', 'task-notification → dispatch_update', {
-            toolUseId: body.toolUseId,
-            status: body.status,
+        for (const n of scanTaskNotifications(text)) {
+          if (n.taskId) this.taskIdToToolUseId.set(n.taskId, n.body.toolUseId);
+          if (n.degraded) {
+            slog('session', 'warn', 'task-notification block only partly parsed — completing anyway', {
+              toolUseId: n.body.toolUseId,
+              taskId: n.taskId,
+            });
+          }
+          slog('session', 'info', 'task-notification (text) → dispatch_update', {
+            toolUseId: n.body.toolUseId,
+            status: n.body.status,
           });
-          this.emit(body, { sdkUuid: msg.uuid });
+          this.emit(n.body, { sdkUuid: msg.uuid });
         }
         break;
       }
@@ -1151,6 +1180,41 @@ export class AgentSession {
   }
 
   /** Derive Clyde-level events from meaningful tool calls (live and backfilled). */
+  /** Live system/task_notification → dispatch_update. The message carries only a
+   *  summary; the agent's actual report lives in output_file, so we read it back
+   *  (best effort) to give the Agents card the same final report the transcript form
+   *  carries in <result>. */
+  private handleTaskNotification(msg: any) {
+    if (typeof msg?.task_id === 'string' && typeof msg?.tool_use_id === 'string') {
+      this.taskIdToToolUseId.set(msg.task_id, msg.tool_use_id);
+    }
+    const parsed = dispatchUpdateFromSystemNotification(msg, (taskId) => this.taskIdToToolUseId.get(taskId));
+    if (!parsed) {
+      // Nothing to join on. The card keeps ticking, and this line is why.
+      slog('session', 'warn', 'task-notification with no correlatable id — dispatch left running', {
+        taskId: typeof msg?.task_id === 'string' ? msg.task_id : undefined,
+        status: msg?.status,
+      });
+      return;
+    }
+    if (parsed.degraded) {
+      slog('session', 'warn', 'task-notification correlated by task id, not tool_use_id', {
+        taskId: parsed.taskId,
+        toolUseId: parsed.body.toolUseId,
+      });
+    }
+    const result = readTaskOutputReport(typeof msg?.output_file === 'string' ? msg.output_file : undefined);
+    const body = result ? { ...parsed.body, result } : parsed.body;
+    slog('session', 'info', 'task-notification → dispatch_update', {
+      toolUseId: body.toolUseId,
+      taskId: parsed.taskId,
+      status: body.status,
+      durationMs: body.durationMs,
+      report: result ? result.length : 0,
+    });
+    this.emit(body, { sdkUuid: msg.uuid });
+  }
+
   private observeToolCall(toolUseId: string, name: string, input: any, meta?: { ts?: string; sdkUuid?: string }) {
     if (name === 'Task' || name === 'Agent') {
       // Real block id so dispatch ↔ tool_result ↔ subagent activity correlate (R8).

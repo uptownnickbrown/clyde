@@ -186,17 +186,26 @@ export type SessionEventBody =
     }
   /** A background agent finished. Background dispatches resolve their tool_result
    *  within ~1s with a spawn ack ("Async agent launched…"); real completion arrives
-   *  later as a harness-injected <task-notification> user message, translated into
-   *  this event. toolUseId matches the dispatch (it can also name a background Bash
+   *  later, in one of two wire forms: LIVE as a system/task_notification message, and
+   *  in the CLI transcript (all backfill sees) as a harness-injected
+   *  <task-notification> user message. Both translate into this event.
+   *  toolUseId matches the dispatch (it can also name a background Bash
    *  task — consumers join against dispatches). The same id can update more than
    *  once (a notified agent can be resumed); the latest update wins. */
   | {
       type: 'dispatch_update';
       toolUseId: string;
+      /** The SDK's 'stopped'/'killed' collapse to 'failed': what a running card needs
+       *  to know is that the agent is no longer running. Nuance rides on summary. */
       status: 'completed' | 'failed';
+      /** The harness task id, when the notification named one. Correlates a later
+       *  notification for the same agent back to this dispatch. */
+      taskId?: string;
       summary?: string;
       /** The agent's final report (truncated server-side). */
       result?: string;
+      /** Wall-clock the agent ran, when the notification reported it. */
+      durationMs?: number;
       worktreeBranch?: string;
       worktreePath?: string;
     }
