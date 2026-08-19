@@ -188,6 +188,12 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .task-meta { margin-top: 6px; font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
 .task-edit-btn { margin-left: 9px; font-size: 11px; font-family: var(--mono); }
+/* Provenance chip: the commit that closed the task, and a jump into its diff. */
+.task-commit {
+  margin-left: 9px; font-size: 10.5px; font-family: var(--mono); background: var(--accent-soft);
+  color: var(--accent); border: none; border-radius: 8px; padding: 1px 8px; white-space: nowrap;
+}
+.task-commit:hover { background: var(--bg-hover); }
 
 /* Edit-in-place: the expanded card flips to a compact subject/detail/status form. */
 .task-edit { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; cursor: default; }
@@ -306,13 +312,25 @@ button.linklike:disabled { opacity: 0.55; cursor: default; }
   font-family: var(--mono); font-size: 12px; line-height: 1.55;
 }
 .goal-edit textarea:focus { outline: none; border-color: var(--accent); }
-.goal-edit-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-.goal-edit-actions button {
+.goal-edit-actions, .md-edit-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+.goal-edit-actions button, .md-edit-actions button {
   background: var(--bg-raised); color: var(--text); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 6px 14px; font-size: 13px;
 }
 .goal-edit-note { font-size: 11.5px; color: var(--text-faint); }
 .goal-edit-note.goal-edit-error { color: var(--danger); }
+
+/* Pushed markdown artifacts get the same edit-in-place flow as the goal doc —
+   an artifact is reference the user may take a pen to (#33). */
+.md-actions { display: flex; justify-content: flex-end; }
+.md-edit { display: flex; flex-direction: column; gap: 8px; }
+.md-edit textarea {
+  width: 100%; min-height: 220px; resize: vertical; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+}
+.md-edit textarea:focus { outline: none; border-color: var(--accent); }
+.md-edit-btn { font-size: 11px; font-family: var(--mono); }
 
 .panel { padding: 12px 14px; border-bottom: 1px solid var(--border-soft); }
 .panel h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
@@ -322,6 +340,34 @@ button.linklike:disabled { opacity: 0.55; cursor: default; }
 .metrics { width: 100%; border-collapse: collapse; font-size: 13px; }
 .metrics td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
 .metrics td:last-child { font-family: var(--mono); text-align: right; }
+
+/* Model-authored html: sandboxed frame, resizable by the corner grip (the content
+   is arbitrary — a plot, a report, an interactive — so the height is the user's). */
+.html-frame {
+  display: flex; flex-direction: column; height: 320px; min-height: 120px;
+  border: 1px solid var(--border); border-radius: 8px; overflow: auto; resize: vertical;
+  background: white;
+}
+.html-iframe { flex: 1; width: 100%; border: none; background: white; }
+.html-frame-note {
+  display: flex; gap: 10px; justify-content: space-between; align-items: baseline;
+  padding: 3px 8px; font-size: 10.5px; font-family: var(--mono);
+  color: var(--text-faint); background: var(--bg-raised); border-top: 1px solid var(--border-soft);
+}
+.html-frame-note .file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Natively rendered tabular results — same visual language as .metrics, but wide
+   tables scroll sideways instead of squeezing the panel. */
+.data-table-wrap { overflow-x: auto; max-width: 100%; }
+.data-table { border-collapse: collapse; font-size: 12.5px; min-width: 100%; }
+.data-table th, .data-table td { padding: 4px 9px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.data-table th {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim);
+  font-weight: 650; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-panel);
+}
+.data-table td + td { font-family: var(--mono); }
+.data-table tbody tr:hover { background: var(--bg-hover); }
+.table-note { margin-top: 6px; font-size: 11px; color: var(--text-faint); }
 
 .reviews-panel { font-size: 13px; }
 .reviews-panel .panel h1 { font-size: 15px; }

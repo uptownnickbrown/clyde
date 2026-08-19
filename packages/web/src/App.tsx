@@ -152,6 +152,11 @@ export default function App() {
     store.set('clyde.rightW', String(w));
   });
 
+  // Task → commit provenance jump (#33): the chip on a task card switches the rail
+  // to the Git timeline and asks it to open that commit. App owns the rail state, so
+  // the jump lives here; GitPanel resolves the (possibly abbreviated) sha.
+  const [focusSha, setFocusSha] = useState<string | null>(null);
+
   const selectCapability = (c: Capability) => {
     if (c === capability && leftOpen) {
       setLeftOpen(false);
@@ -245,8 +250,18 @@ export default function App() {
               <header className="panel-head">{capabilityLabel(capability)}</header>
               <div className="panel-scroll">
                 {capability === 'goal' && <GoalPanel markdown={state.goalMarkdown} />}
-                {capability === 'tasks' && <TasksPanel tasks={state.tasks} delegated={delegated} send={send} />}
-                {capability === 'git' && <GitPanel commits={state.commits} />}
+                {capability === 'tasks' && (
+                  <TasksPanel
+                    tasks={state.tasks}
+                    delegated={delegated}
+                    send={send}
+                    onShowCommit={(sha) => {
+                      setFocusSha(sha);
+                      selectCapability('git');
+                    }}
+                  />
+                )}
+                {capability === 'git' && <GitPanel commits={state.commits} focusSha={focusSha} />}
                 {capability === 'decisions' && <DecisionsPanel />}
                 {capability === 'reviews' && <ReviewsPanel tasks={state.tasks} />}
                 {capability === 'artifacts' && <PushedPanels panels={state.panels} />}
