@@ -284,7 +284,7 @@ try {
   await page.waitForTimeout(500);
   await shot('10-reviews-panel');
 
-  // 10c — raw-dump resolution (#39): this batch's dump exists on neither its
+  // 10d — raw-dump resolution (#39): this batch's dump exists on neither its
   // source.review path nor .clyde/reviews/<batch>.md, so the click must yield the
   // honest missing-state note — never the server's 404 body rendered as markdown.
   await page.locator('.batch-card .linklike').first().click();

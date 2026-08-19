@@ -56,7 +56,8 @@ review and change drills as they land) — ordinary work pays zero ceremony.
 - **Cross-package change** — one logical change touching `shared` + `server` +
   `web` is a contract change wearing three coats.
 
-**Not significant** (the common case): routine content edits to `.clyde/` files —
+**Not significant** (the common case — these carve-outs win over the triggers
+above whenever both plainly apply): routine content edits to `.clyde/` files —
 task entries, ruling appends, review dumps (only *format* changes trigger); a new
 file carved out of an existing responsibility; a purely additive field consumed
 the way its siblings are, landed through the normal contract-first workflow;
