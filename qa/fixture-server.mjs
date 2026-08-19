@@ -21,6 +21,13 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
+// The real server serves project files under a CSP sandbox (#34, server.ts) so a
+// direct navigation to agent-authored HTML lands on an opaque origin. The fixture
+// serves it too (#36): otherwise every screenshot assert about exhibit rendering is
+// evidence from a MORE permissive environment than production, and would not catch a
+// panel that only works because the header is missing.
+const PROJECT_FILE_CSP = { 'content-security-policy': 'sandbox allow-scripts' };
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(HERE, '..');
 const WEB_DIST = path.join(PROJECT_ROOT, 'packages/web/dist');
@@ -65,7 +72,7 @@ export function startFixtureServer(port = 4123) {
     if (url.pathname === '/api/project-file') {
       const rel = url.searchParams.get('path') ?? '';
       if (overrides.has(rel)) {
-        res.writeHead(200, { 'content-type': MIME[path.extname(rel)] ?? 'text/plain' });
+        res.writeHead(200, { 'content-type': MIME[path.extname(rel)] ?? 'text/plain', ...PROJECT_FILE_CSP });
         res.end(overrides.get(rel));
         return;
       }
@@ -74,7 +81,7 @@ export function startFixtureServer(port = 4123) {
         res.writeHead(404).end('not found');
         return;
       }
-      res.writeHead(200, { 'content-type': MIME[path.extname(abs)] ?? 'application/octet-stream' });
+      res.writeHead(200, { 'content-type': MIME[path.extname(abs)] ?? 'application/octet-stream', ...PROJECT_FILE_CSP });
       fs.createReadStream(abs).pipe(res);
       return;
     }
