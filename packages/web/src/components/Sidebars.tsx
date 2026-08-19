@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ClientMessage, CommitInfo, PanelSpec, SessionEvent, TaskItem } from '@clyde/shared';
 import { Md } from './Md';
+import { FileMarkdown, PanelBody } from './PanelContent';
 
 // ---------- Left rail ----------
 
@@ -502,67 +503,10 @@ export function PushedPanels({ panels }: { panels: PanelSpec[] }) {
       {panels.map((p) => (
         <section key={p.id} className="panel">
           <h3>{p.title}</h3>
-          {p.kind === 'image-gallery' && <Gallery glob={p.glob} />}
-          {p.kind === 'markdown' && <FileMarkdown path={p.path} />}
-          {p.kind === 'metrics' && <Metrics path={p.path} />}
-          {p.kind === 'iframe' && <iframe src={p.url} title={p.title} className="panel-iframe" />}
+          <PanelBody content={p} />
         </section>
       ))}
     </div>
-  );
-}
-
-function Gallery({ glob }: { glob: string }) {
-  const [files, setFiles] = useState<string[]>([]);
-  useEffect(() => {
-    fetch(`/api/gallery?glob=${encodeURIComponent(glob)}`)
-      .then((r) => r.json())
-      .then(setFiles)
-      .catch(() => setFiles([]));
-  }, [glob]);
-  return (
-    <div className="gallery">
-      {files.map((f) => (
-        <a key={f} href={`/api/project-file?path=${encodeURIComponent(f)}`} target="_blank" rel="noreferrer">
-          <img src={`/api/project-file?path=${encodeURIComponent(f)}`} alt={f} />
-        </a>
-      ))}
-      {files.length === 0 && <div className="empty">no matches for {glob}</div>}
-    </div>
-  );
-}
-
-function FileMarkdown({ path }: { path: string }) {
-  const [text, setText] = useState('');
-  useEffect(() => {
-    fetch(`/api/project-file?path=${encodeURIComponent(path)}`)
-      .then((r) => r.text())
-      .then(setText)
-      .catch(() => setText(''));
-  }, [path]);
-  return <Md>{text}</Md>;
-}
-
-function Metrics({ path }: { path: string }) {
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
-  useEffect(() => {
-    fetch(`/api/project-file?path=${encodeURIComponent(path)}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => setData(null));
-  }, [path]);
-  if (!data) return <div className="empty">no data</div>;
-  return (
-    <table className="metrics">
-      <tbody>
-        {Object.entries(data).map(([k, v]) => (
-          <tr key={k}>
-            <td>{k}</td>
-            <td>{String(v)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 

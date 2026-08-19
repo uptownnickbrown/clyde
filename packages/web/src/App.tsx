@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useClyde } from './store';
 import { QuestionsPanel, deriveQuestions } from './components/Questions';
+import { ExhibitsPanel } from './components/Exhibits';
 import { Conversation } from './components/Conversation';
 import { Composer } from './components/Composer';
 import { WorkBar } from './components/WorkBar';
@@ -23,11 +24,14 @@ import {
 // Shell layout (Design Vision): stable top bar · icon rail · one capability panel ·
 // conversation center · right workbench. The workbench is the attention surface
 // (DECISIONS 2026-08-18): it carries structured interaction that needs the user's
-// eyes now — Questions today, review ceremonies and live exhibits soon. Durable
-// reference state (Goal, Artifacts) lives in the left rail. One tab for now; the
-// tab bar stays because more attention tenants are coming (no placeholder tabs).
+// eyes now — Questions the agent is blocked on, and Exhibits it wants ruled on.
+// Durable reference state (Goal, Artifacts) lives in the left rail. Both tabs are
+// real tenants; a pending item in either flips the workbench to it.
 
-type WbTab = 'questions';
+type WbTab = 'questions' | 'exhibits';
+
+const WB_TABS: WbTab[] = ['questions', 'exhibits'];
+const WB_LABEL: Record<WbTab, string> = { questions: 'Questions', exhibits: 'Exhibits' };
 
 const store = {
   get: (k: string, fallback: string) => localStorage.getItem(k) ?? fallback,
@@ -118,9 +122,13 @@ export default function App() {
   }, [mode, leftOpen, rightOpen]);
   const [wbTab, setWbTab] = useState<WbTab>(() => {
     // Migration: 'goal'/'panels' moved to the left rail as capabilities — any
-    // stored workbench default falls back to the one remaining tab.
-    if (store.get('clyde.wbTab', 'questions') !== 'questions') store.set('clyde.wbTab', 'questions');
-    return 'questions';
+    // stored workbench default outside the real tabs falls back to Questions.
+    const stored = store.get('clyde.wbTab', 'questions') as WbTab;
+    if (!WB_TABS.includes(stored)) {
+      store.set('clyde.wbTab', 'questions');
+      return 'questions';
+    }
+    return stored;
   });
 
   const drag = (apply: (clientX: number) => void) => (e: React.MouseEvent) => {
@@ -170,17 +178,26 @@ export default function App() {
 
   const status = state.connected ? state.status : 'disconnected';
 
-  // The workbench is the attention surface: a new pending question flips it open
-  // onto the Questions tab (without persisting over the user's chosen default).
+  // The workbench is the attention surface: a new pending question or exhibit flips
+  // it open onto that tab (without persisting over the user's chosen default).
   const questions = useMemo(() => deriveQuestions(state.events), [state.events]);
   const pendingQuestionId = questions.pending?.questionId ?? null;
-  useEffect(() => {
-    if (!pendingQuestionId) return;
-    setWbTab('questions');
+  const pendingExhibits = state.exhibits.filter((x) => x.status === 'pending');
+  const pendingExhibitId = pendingExhibits[pendingExhibits.length - 1]?.id ?? null;
+  const flipWorkbench = (tab: WbTab) => {
+    setWbTab(tab);
     setRightOpen(true);
     // Below wide the workbench displaces the capability panel (one aux surface).
     if (currentMode() !== 'wide') setLeftOpen(false);
+  };
+  useEffect(() => {
+    if (!pendingQuestionId) return;
+    flipWorkbench('questions');
   }, [pendingQuestionId]);
+  useEffect(() => {
+    if (!pendingExhibitId) return;
+    flipWorkbench('exhibits');
+  }, [pendingExhibitId]);
 
   // Artifacts attention: amber count of panels_updated events the user hasn't
   // looked at. In-memory only — baselined at the first snapshot (history never
@@ -259,7 +276,13 @@ export default function App() {
             status={status}
             send={send}
           />
-          <WorkBar status={status} since={state.workingSince} tasks={state.tasks} events={state.events} />
+          <WorkBar
+            status={status}
+            since={state.workingSince}
+            tasks={state.tasks}
+            events={state.events}
+            pendingExhibits={pendingExhibits.length}
+          />
           <Composer status={state.status} queue={state.queue} model={state.model} effort={state.effort} send={send} />
         </main>
 
@@ -268,7 +291,7 @@ export default function App() {
             {!overlay && <div className="resizer" onMouseDown={dragRight} title="Drag to resize" />}
             <aside className={`right-panel${overlay ? ' drawer' : ''}`} style={overlay ? undefined : { width: rightW }}>
               <nav className="wb-tabs">
-                {(['questions'] as WbTab[]).map((t) => (
+                {WB_TABS.map((t) => (
                   <button
                     key={t}
                     className={wbTab === t ? 'active' : ''}
@@ -277,8 +300,10 @@ export default function App() {
                       store.set('clyde.wbTab', t);
                     }}
                   >
-                    Questions
-                    {questions.pending && <span className="wb-attn" />}
+                    {WB_LABEL[t]}
+                    {(t === 'questions' ? Boolean(questions.pending) : pendingExhibits.length > 0) && (
+                      <span className="wb-attn" />
+                    )}
                   </button>
                 ))}
                 <button
@@ -294,6 +319,9 @@ export default function App() {
               </nav>
               <div className="panel-scroll">
                 {wbTab === 'questions' && <QuestionsPanel events={state.events} send={send} />}
+                {wbTab === 'exhibits' && (
+                  <ExhibitsPanel exhibits={state.exhibits} tasks={state.tasks} send={send} />
+                )}
               </div>
             </aside>
           </>

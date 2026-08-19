@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef } from 'react';
 import type {
   ClientMessage,
   CommitInfo,
+  Exhibit,
   GitStatus,
   PanelSpec,
   QueuedItem,
@@ -20,6 +21,10 @@ export interface UIState {
   threads: Thread[];
   queue: QueuedItem[];
   panels: PanelSpec[];
+  /** Blocking exhibits with live status — seeded from the snapshot (the server owns
+   *  pending-ness: only it knows which blocked calls are still held), then updated
+   *  by exhibit / exhibit_settled events. */
+  exhibits: Exhibit[];
   tasks: TaskItem[];
   commits: CommitInfo[];
   status: string;
@@ -42,6 +47,7 @@ const initial: UIState = {
   threads: [],
   queue: [],
   panels: [],
+  exhibits: [],
   tasks: [],
   commits: [],
   status: 'disconnected',
@@ -58,6 +64,12 @@ type Action =
   | { kind: 'hello'; snapshot: Snapshot }
   | { kind: 'server'; msg: ServerMessage }
   | { kind: 'disconnected' };
+
+/** Nothing holds these open any more — see the turn_complete case. */
+const expirePending = (exhibits: Exhibit[]): Exhibit[] =>
+  exhibits.some((x) => x.status === 'pending')
+    ? exhibits.map((x) => (x.status === 'pending' ? { ...x, status: 'expired' as const } : x))
+    : exhibits;
 
 function applyEvent(state: UIState, event: SessionEvent): UIState {
   const next = { ...state, events: [...state.events, event] };
@@ -84,13 +96,44 @@ function applyEvent(state: UIState, event: SessionEvent): UIState {
       return { ...next, tasks: event.tasks };
     case 'panels_updated':
       return { ...next, panels: event.panels };
+    case 'exhibit':
+      // A live exhibit event means the server just registered its resolver.
+      return {
+        ...next,
+        exhibits: [
+          ...state.exhibits.filter((x) => x.id !== event.exhibitId),
+          {
+            id: event.exhibitId,
+            title: event.title,
+            content: event.content,
+            taskId: event.taskId,
+            detail: event.detail,
+            ts: event.ts,
+            status: 'pending',
+          },
+        ],
+      };
+    case 'exhibit_settled':
+      return {
+        ...next,
+        exhibits: state.exhibits.map((x) =>
+          x.id === event.exhibitId
+            ? { ...x, status: event.verdict, comment: event.comment, settledTs: event.ts }
+            : x,
+        ),
+      };
     case 'commit':
       return { ...next, commits: [event.commit, ...state.commits] };
     case 'turn_complete': {
       const liveText = { ...state.liveText };
       delete liveText[event.turnId];
-      return { ...next, liveText };
+      // A blocking exhibit can only outlive its turn if the turn was interrupted or
+      // aborted — the server drops those resolvers, so the card must stop offering
+      // actions that would reach nobody. Same rule the question cards use.
+      return { ...next, liveText, exhibits: expirePending(state.exhibits) };
     }
+    case 'session_started':
+      return { ...next, exhibits: expirePending(state.exhibits) };
     default:
       return next;
   }
@@ -114,6 +157,7 @@ function reducer(state: UIState, action: Action): UIState {
         threads: s.threads,
         queue: s.queue,
         panels: s.panels,
+        exhibits: s.exhibits ?? [],
         tasks: s.tasks,
         commits: s.commits,
         status: s.status,
