@@ -24,8 +24,12 @@ try {
   process.exit(2);
 }
 
+// Counted, and printed in the summary: the assertion count is a claim like any other,
+// and this repo amends overclaims rather than defending them.
 let failures = 0;
+let asserted = 0;
 function check(name, cond, detail) {
+  asserted++;
   if (cond) console.log(`  ok  ${name}`);
   else {
     failures++;
@@ -116,6 +120,41 @@ for (const [name, text] of [
   const r = applyDecisionEdit(LEDGER, { original: DECIDED, text: '- Deferred: this axis — revisit when it bites (2026-08-19)' });
   check('a Decided ruling may become a Deferred one', r.ok === true && r.changed === true, r);
 }
+// The writer must accept only what the panel's parser renders. A ruling saved with no
+// space after the colon parses here but not there: it would vanish from the panel — no
+// card, no error, no way to reach the line again.
+for (const [name, text] of [
+  ['no space after the colon', '- Decided:threading is presentation only (2026-08-19)'],
+  ['no space, Deferred', '- Deferred:bulk ops — revisit later (2026-08-19)'],
+]) {
+  const r = applyDecisionEdit(LEDGER, { original: DECIDED, text });
+  check(`${name} refused (writer no looser than reader)`, r.ok === false && r.status === 400, r);
+}
+
+// ---------- 4b. a save cannot manufacture a duplicate ----------
+// The mirror of the ambiguous-target refusal below. Allowing it lets the panel create a
+// pair of identical rulings that every later edit and delete then refuses as ambiguous —
+// both cards permanently dead, with no in-product remedy.
+console.log('\n4b. a save cannot manufacture the duplicate that would deadlock the panel');
+{
+  const r = applyDecisionEdit(LEDGER, { original: DECIDED, text: DEFERRED });
+  check('editing ruling A into a copy of ruling B → 409', r.ok === false && r.status === 409, r);
+  check('the refusal names the collision', r.ok === false && /already exists as another ruling/.test(r.reason), r.reason);
+
+  // Whitespace must not smuggle one past: the comparison is on the same trimmed form the
+  // match uses, and interior newlines collapse before it.
+  const padded = applyDecisionEdit(LEDGER, { original: DECIDED, text: `   ${DEFERRED}   ` });
+  check('padded duplicate → 409', padded.ok === false && padded.status === 409, padded);
+  const wrapped = applyDecisionEdit(LEDGER, { original: DECIDED, text: DEFERRED.replace(' — ', '\n— ') });
+  check('multi-line duplicate → 409', wrapped.ok === false && wrapped.status === 409, wrapped);
+
+  // The guard must not fire on the line being edited — that is the no-op case, not a
+  // collision — nor on a genuinely new ruling.
+  const self = applyDecisionEdit(LEDGER, { original: DECIDED, text: DECIDED });
+  check('re-saving a ruling unchanged is still a no-op, not a collision', self.ok === true && self.changed === false, self);
+  const fresh = applyDecisionEdit(LEDGER, { original: DECIDED, text: '- Decided: something nothing else says (2026-08-19)' });
+  check('a distinct replacement still saves', fresh.ok === true && fresh.changed === true, fresh);
+}
 
 // ---------- 5. the ledger moving underneath the panel ----------
 // The reason the payload is a line and not a whole file: an agent append between the
@@ -187,11 +226,14 @@ console.log('\n8. ruling grammar — the two kinds, and only those');
 check('- Decided: …', RULING_LINE.test(DECIDED) === true);
 check('- Deferred: …', RULING_LINE.test(DEFERRED) === true);
 check('- Decided with no body rejected', RULING_LINE.test('- Decided:') === false);
+check('no space after the colon rejected', RULING_LINE.test('- Decided:x') === false);
 check('- decided (lowercase) rejected', RULING_LINE.test('- decided: x') === false);
 check('a different bullet kind rejected', RULING_LINE.test('- Noted: x') === false);
 check('prose mentioning Decided: rejected', RULING_LINE.test('We Decided: x') === false);
 
 console.log(
-  failures === 0 ? '\nDECISION LEDGER POLICY: all checks passed' : `\nDECISION LEDGER POLICY: ${failures} FAILED`,
+  failures === 0
+    ? `\nDECISION LEDGER POLICY: ${asserted}/${asserted} assertions passed`
+    : `\nDECISION LEDGER POLICY: ${failures} of ${asserted} assertions FAILED`,
 );
 process.exit(failures === 0 ? 0 : 1);

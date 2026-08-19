@@ -5,10 +5,15 @@ import type { DecisionEdit } from '@clyde/shared';
 // editable in place. The file stays the source of truth (files-as-database); this is a
 // lens with a pencil.
 //
-// The ledger grammar this panel reads (and the server's decisions.ts independently
-// enforces on write) is two bullet kinds, both rulings:
+// The ledger grammar this panel reads is two bullet kinds, both rulings:
 //   - Decided: <what> because <why> (<date>)
 //   - Deferred: <axis> — revisit when <trigger> (<date>)
+// The server's decisions.ts holds its own copy of that grammar (RULING_LINE) and applies
+// it to every WRITE, no looser than this parser: anything it accepts, this renders. The
+// two regexes are deliberately independent — the client only ever echoes back a line it
+// rendered, so drift can cost a card here but can never corrupt the file — but the
+// no-looser direction is load-bearing and must be kept if either side moves: a line the
+// writer accepts and the reader drops disappears from the panel with no way back.
 // Everything else in the file — heading, preamble, blank lines, bullets in a shape this
 // parser does not recognize — is prose the panel does not own. It renders none of it and,
 // crucially, never round-trips it: a save names ONE ruling line by its exact text, so

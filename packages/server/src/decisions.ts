@@ -20,8 +20,12 @@ import type { DecisionEdit } from '@clyde/shared';
 
 /** A ruling line: the ledger's two bullet kinds, both editable. `Decided:` is a
  *  settled ruling; `Deferred:` is a priced-and-parked axis of change (the posture
- *  convention). Anything else in the file is prose the panel does not own. */
-export const RULING_LINE = /^-\s+(?:Decided|Deferred):\s*\S/;
+ *  convention). Anything else in the file is prose the panel does not own.
+ *
+ *  Deliberately no looser than the panel's own parser (`Decisions.tsx`), which requires
+ *  whitespace after the colon: the writer must accept only what the reader renders, or a
+ *  save produces a line that vanishes from the panel and can never be reached again. */
+export const RULING_LINE = /^-\s+(?:Decided|Deferred):\s+\S/;
 
 export type DecisionEditOutcome =
   | {
@@ -75,6 +79,19 @@ export function applyDecisionEdit(markdown: string, edit: DecisionEdit): Decisio
     return { ok: false, status: 400, reason: 'a ruling line must start with "- Decided:" or "- Deferred:"' };
   }
   if (replacement === original) return { ok: true, markdown, changed: false, summary: 'no change' };
+  // Refusing a DUPLICATING replacement is the other half of refusing an ambiguous target.
+  // Without it a save can manufacture the very collision that makes both copies
+  // permanently unaddressable — every later edit and delete on either line 409s, and the
+  // panel offers no way out of a state it created.
+  for (let i = 0; i < lines.length; i++) {
+    if (i !== at && lines[i].trim() === replacement) {
+      return {
+        ok: false,
+        status: 409,
+        reason: `that text already exists as another ruling (line ${i + 1}) — two identical rulings could not be told apart`,
+      };
+    }
+  }
 
   // Preserve the line's own framing (indent, CRLF) so an edit never changes the file's
   // shape beyond the words in it.

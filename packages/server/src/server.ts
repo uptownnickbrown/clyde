@@ -8,6 +8,7 @@ import { applyDecisionEdit } from './decisions.js';
 import { ClydeStore } from './store.js';
 import { listCommits, repoStatus, showCommit } from './git.js';
 import { initLogger, slog, tailLog } from './log.js';
+import { createNoteBuffer } from './notes.js';
 import { ASIDE_MODEL, runAside } from './observer.js';
 import { allowedOrigins, isOriginAllowed, isStateChanging } from './origin.js';
 
@@ -85,43 +86,37 @@ export async function startServer(projectRoot: string, port: number, freshSessio
 
   const webDist = findWebDist();
 
-  // Edits to pushed markdown artifacts, debounced into ONE agent note per burst
-  // (same shape as the Tasks panel's [Tasks edited] note) so a save-happy user never
-  // spams the conversation.
-  const fileEdits: string[] = [];
-  let fileEditTimer: NodeJS.Timeout | undefined;
-  const noteFileEdit = (rel: string, summary: string) => {
-    fileEdits.push(`${rel} ${summary}`);
-    clearTimeout(fileEditTimer);
-    fileEditTimer = setTimeout(() => {
-      const edits = fileEdits.splice(0);
+  // Panel edits reach the agent as ONE debounced note per burst, so a save-happy user
+  // never spams the conversation. Both buffers resolve `session` when they FIRE, not
+  // when they are created — it is a reassignable binding (New session swaps it), and
+  // notes.ts drops a burst whose session went away rather than reporting edits to a
+  // conversation that never saw them.
+  const fileEditNotes = createNoteBuffer(
+    () => session,
+    (edits) => {
+      // The note names the file when the burst touched exactly one, so the common case
+      // reads as a sentence. Recovered by stripping the trailing "+N/-M lines" rather
+      // than splitting on space: a project path may contain one.
       const one = edits.length === 1;
-      session.enqueue(
-        `[${one ? rel : `${edits.length} files`} edited] The user edited ${edits.join('; ')} in place ` +
-          `from the Artifacts panel. Re-read ${one ? 'it' : 'them'} before acting — the edit is user intent.`,
+      const rel = one ? edits[0].replace(/\s+\+\d+\/-\d+ lines$/, '') : `${edits.length} files`;
+      return (
+        `[${rel} edited] The user edited ${edits.join('; ')} in place ` +
+        `from the Artifacts panel. Re-read ${one ? 'it' : 'them'} before acting — the edit is user intent.`
       );
-    }, 5000);
-  };
+    },
+  );
+  const noteFileEdit = (rel: string, summary: string) => fileEditNotes.push(`${rel} ${summary}`);
 
-  // Decision-ledger edits, debounced the same way (one note per editing burst). Kept
-  // as its own buffer rather than folded into noteFileEdit: the prose has to say
-  // something different — a ruling that changed under the agent's feet is a re-litigation
-  // hazard, not a file it might want to re-read — and per constitution rule 4 this is the
-  // second inlining, not the third.
-  const decisionEdits: string[] = [];
-  let decisionEditTimer: NodeJS.Timeout | undefined;
-  const noteDecisionEdit = (summary: string) => {
-    decisionEdits.push(summary);
-    clearTimeout(decisionEditTimer);
-    decisionEditTimer = setTimeout(() => {
-      const edits = decisionEdits.splice(0);
-      session.enqueue(
-        `[Decisions edited] The user edited the decision ledger directly: ${edits.join('; ')}. ` +
-          `Re-read .clyde/DECISIONS.md before relying on a recorded ruling — an edited or removed ` +
-          `decision must not be re-litigated from memory.`,
-      );
-    }, 5000);
-  };
+  // Decision-ledger edits get their own buffer, not a fold into the one above: the prose
+  // has to say something different — a ruling that changed under the agent's feet is a
+  // re-litigation hazard, not a file it might want to re-read.
+  const decisionNotes = createNoteBuffer(
+    () => session,
+    (edits) =>
+      `[Decisions edited] The user edited the decision ledger directly: ${edits.join('; ')}. ` +
+      `Re-read .clyde/DECISIONS.md before relying on a recorded ruling — an edited or removed ` +
+      `decision must not be re-litigated from memory.`,
+  );
 
   const projectReal = fs.realpathSync(path.resolve(projectRoot));
   const clydePrefix = path.join(projectReal, '.clyde') + path.sep;
@@ -300,7 +295,7 @@ export async function startServer(projectRoot: string, port: number, freshSessio
         if (outcome.changed) {
           fs.writeFileSync(file, outcome.markdown);
           slog('server', 'info', 'decision ledger edited from the panel', { summary: outcome.summary });
-          noteDecisionEdit(outcome.summary);
+          decisionNotes.push(outcome.summary);
         }
         broadcastAll({ type: 'decisions', markdown: outcome.markdown });
         res.writeHead(200, { 'content-type': 'application/json' });

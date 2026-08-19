@@ -1,6 +1,13 @@
 // Live QA: drive the real Clyde UI (scratch project, haiku session) via Playwright.
 // Exercises: send → stream → tool chips → commit linking, thread flow (reply_in_thread
-// live-fire), and the New-session action. Screenshots land in qa/screenshots/live-*.png.
+// live-fire), the New-session action, decision-ledger edits, and the origin gate.
+// Screenshots land in qa/screenshots/live-*.png.
+//
+// The decisions section (8b) edits .clyde/DECISIONS.md in the project under test and
+// restores it afterwards, so this must run against a SCRATCH project — it refuses to run
+// against the Clyde repo. It finds the project root from the server's boot log; set
+// CLYDE_LIVE_PROJECT=<path> to say so explicitly.
+import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 // Raw socket client for the origin gate (#36): Playwright's page can only ever send
@@ -202,6 +209,142 @@ try {
   await page.waitForSelector('.ex-settled', { timeout: 30000 });
   await page.waitForTimeout(300);
   await shot('live-14-exhibit-settled');
+
+  // --- 8b: decision-ledger edits (#40) — the Decisions panel's write path, live ---
+  // The offline check (qa/decisions-check.mjs) owns the ledger RULES; this owns the
+  // wiring they run through: the route, the file on disk, the broadcast that re-renders
+  // every open panel, and the origin gate covering a route it was written before.
+  // Placed late for the same reason as the origin section: a successful edit enqueues a
+  // "[Decisions edited]" note for the agent.
+  await page.waitForSelector('.workbar.idle', { timeout: 240000 });
+  {
+    const REPO = path.resolve(OUT, '..'); // the Clyde repo itself — never the subject
+    // Explicit beats inferred; otherwise read the root off the server's own boot log.
+    let projectRoot = process.env.CLYDE_LIVE_PROJECT;
+    if (!projectRoot) {
+      const logText = await fetch(`${URL}api/logs?tail=2000`).then((r) => r.text());
+      for (const line of logText.split('\n').filter(Boolean).reverse()) {
+        try {
+          const entry = JSON.parse(line);
+          if (entry?.data?.projectRoot) {
+            projectRoot = entry.data.projectRoot;
+            break;
+          }
+        } catch { /* not every line is an object we care about */ }
+      }
+    }
+    if (!projectRoot) {
+      throw new Error(
+        'cannot locate the scratch project root — set CLYDE_LIVE_PROJECT=<path> (the boot log had scrolled past tail=2000)',
+      );
+    }
+    if (path.resolve(projectRoot) === REPO) {
+      throw new Error('live-drive is pointed at the Clyde repo itself — it edits the decision ledger; use a scratch project');
+    }
+
+    const ledgerPath = path.join(projectRoot, '.clyde', 'DECISIONS.md');
+    const existed = fs.existsSync(ledgerPath);
+    const original = existed ? fs.readFileSync(ledgerPath, 'utf8') : null;
+    const SEED_A = '- Decided: the live-drive harness seeds this ledger to exercise the edit route (2026-08-19)';
+    const SEED_B = '- Deferred: deleting the seeded ledger afterwards — revisit when live-drive gets a teardown phase (2026-08-19)';
+    const PREAMBLE = '# Decisions\n\nSeeded by qa/live-drive.mjs.\n\n';
+    if (!existed) fs.writeFileSync(ledgerPath, `${PREAMBLE}${SEED_A}\n${SEED_B}\n`);
+
+    // Watch the socket: a save has to reach every OTHER open panel, not just the saver.
+    const sock = new WebSocket('ws://localhost:4141/ws', { headers: { origin: 'http://localhost:4141' } });
+    const seen = [];
+    sock.on('message', (m) => {
+      try { seen.push(JSON.parse(String(m))); } catch { /* ignore */ }
+    });
+    await new Promise((resolve, reject) => {
+      sock.on('open', resolve);
+      sock.on('error', reject);
+      setTimeout(() => reject(new Error('ws open timeout')), 8000);
+    });
+    const awaitBroadcast = async (deadlineMs = 8000) => {
+      const until = Date.now() + deadlineMs;
+      while (Date.now() < until) {
+        const hit = seen.find((m) => m.type === 'decisions');
+        if (hit) return hit;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return null;
+    };
+
+    try {
+      const post = (body, headers = {}) =>
+        fetch(`${URL}api/decisions`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
+      const readLedger = () => fs.readFileSync(ledgerPath, 'utf8');
+      const before = readLedger();
+      const target = before.split('\n').find((l) => /^-\s+Decided:\s+\S/.test(l.trim()))?.trim();
+      if (!target) throw new Error(`no "- Decided:" ruling in ${ledgerPath} to edit`);
+
+      // 8b-1. The unhappy paths first — they must change nothing at all.
+      const notARuling = await post({ original: '# Decisions', text: '- Decided: pwned (2026-08-19)' });
+      if (notARuling.status !== 400) throw new Error(`editing the heading returned ${notARuling.status}, expected 400`);
+      const stale = await post({ original: '- Decided: a ruling nobody recorded (2026-08-19)', text: '- Decided: x (2026-08-19)' });
+      if (stale.status !== 409) throw new Error(`a stale target returned ${stale.status}, expected 409`);
+      if (readLedger() !== before) throw new Error('a REFUSED decision edit still changed the ledger');
+      log('decisions: refusals (non-ruling 400, stale 409) changed nothing on disk');
+
+      // 8b-2. The origin gate covers this route too — it keys on method, not a route
+      // list, so a route added after the gate is covered by construction (#36).
+      const nullOrigin = await post({ original: target }, { origin: 'null' });
+      if (nullOrigin.status !== 403) throw new Error(`POST /api/decisions with Origin: null returned ${nullOrigin.status}, expected 403`);
+      if (readLedger() !== before) throw new Error('the ledger changed despite the 403 — the write was not refused!');
+      log('decisions: Origin: null → 403, ledger untouched');
+
+      // 8b-3. The happy path: edit lands on disk, in the response, and on the socket.
+      seen.length = 0;
+      const edited = `${target.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '')} — amended live by qa/live-drive.mjs (2026-08-19)`;
+      const okRes = await post({ original: target, text: edited });
+      if (okRes.status !== 200) throw new Error(`POST /api/decisions returned ${okRes.status}, expected 200`);
+      const okBody = await okRes.json();
+      if (!okBody.ok || !okBody.changed) throw new Error(`edit did not report a change: ${JSON.stringify(okBody)}`);
+      if (!okBody.markdown.includes(edited)) throw new Error('the response markdown is missing the edited ruling');
+      const afterEdit = readLedger();
+      if (!afterEdit.includes(edited)) throw new Error('the edited ruling never reached .clyde/DECISIONS.md');
+      if (afterEdit.includes(target)) throw new Error('the old ruling text survived the edit');
+      if (!afterEdit.startsWith(before.split('\n')[0])) throw new Error('the edit damaged the ledger preamble');
+      if (afterEdit.split('\n').length !== before.split('\n').length) throw new Error('the edit changed the ledger line count');
+      const bcast = await awaitBroadcast();
+      if (!bcast) throw new Error('no `decisions` broadcast reached a second client after the save');
+      if (bcast.markdown !== afterEdit) throw new Error('the broadcast markdown does not match the file on disk');
+      log('decisions: edit → 200, file rewritten, broadcast matches disk byte for byte');
+
+      // 8b-4. A save may not manufacture a duplicate: two identical rulings could never
+      // be told apart again, and every later edit or delete on either would 409 forever.
+      const otherRuling = afterEdit.split('\n').map((l) => l.trim()).find((l) => /^-\s+(Decided|Deferred):\s+\S/.test(l) && l !== edited);
+      if (otherRuling) {
+        const dupe = await post({ original: edited, text: otherRuling });
+        if (dupe.status !== 409) throw new Error(`a duplicate-creating edit returned ${dupe.status}, expected 409`);
+        if (readLedger() !== afterEdit) throw new Error('the refused duplicate still changed the ledger');
+        log('decisions: an edit that would duplicate another ruling → 409, ledger untouched');
+      }
+
+      // 8b-5. Delete is real deletion — the line leaves, its neighbours stay.
+      seen.length = 0;
+      const delRes = await post({ original: edited });
+      if (delRes.status !== 200) throw new Error(`delete returned ${delRes.status}, expected 200`);
+      const afterDelete = readLedger();
+      if (afterDelete.includes(edited)) throw new Error('the deleted ruling is still in the ledger');
+      if (afterDelete.split('\n').length !== afterEdit.split('\n').length - 1) throw new Error('delete removed more than one line');
+      if (otherRuling && !afterDelete.includes(otherRuling)) throw new Error('delete took a neighbouring ruling with it');
+      if (!(await awaitBroadcast())) throw new Error('no `decisions` broadcast after the delete');
+      log('decisions: delete → the ruling left the ledger, neighbours and preamble intact');
+
+      // The panel the user is actually looking at reflects it, with no reload.
+      await page.locator('.rail-btn[title="Decisions"]').click();
+      await page.waitForSelector('.decisions-panel');
+      await page.waitForTimeout(600);
+      await shot('live-16-decisions-panel');
+    } finally {
+      sock.close();
+      if (original !== null) fs.writeFileSync(ledgerPath, original);
+      else fs.rmSync(ledgerPath, { force: true });
+      log('decisions: scratch ledger restored');
+    }
+  }
 
   // --- 9: origin gate (#36) — the opaque origin cannot reach the socket or write ---
   // Deliberately LAST: the positive case POSTs /api/goal, which enqueues a

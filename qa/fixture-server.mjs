@@ -31,10 +31,26 @@ const PROJECT_FILE_CSP = { 'content-security-policy': 'sandbox allow-scripts' };
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(HERE, '..');
 const WEB_DIST = path.join(PROJECT_ROOT, 'packages/web/dist');
+const DECISIONS_POLICY = path.join(PROJECT_ROOT, 'packages/server/dist/decisions.js');
+const DECISIONS_LEDGER = '.clyde/DECISIONS.md';
+
+// POST /api/decisions is served here by importing the REAL policy module the server
+// route uses (same trick as qa/origin-check.mjs). Reimplementing the ledger rules in the
+// harness would give the screenshots a second, divergent set of semantics to pass — the
+// one thing a fixture must never do.
+let applyDecisionEdit = null;
+try {
+  ({ applyDecisionEdit } = await import(DECISIONS_POLICY));
+} catch {
+  /* reported at startup, below — the suite needs a server build */
+}
 
 export function startFixtureServer(port = 4123) {
   if (!fs.existsSync(path.join(WEB_DIST, 'index.html'))) {
     throw new Error(`No web build at ${WEB_DIST} — run: npm run build --workspace=@clyde/web`);
+  }
+  if (!applyDecisionEdit) {
+    throw new Error(`No server build at ${DECISIONS_POLICY} — run: tsc -b packages/shared packages/server`);
   }
   const snapshot = buildSnapshot(PROJECT_ROOT);
   // Every client message the UI sends, in order — behavioral assertions read it
@@ -95,9 +111,49 @@ export function startFixtureServer(port = 4123) {
       const chunks = [];
       req.on('data', (c) => chunks.push(c));
       req.on('end', () => {
-        overrides.set('.clyde/DECISIONS.md', Buffer.concat(chunks).toString('utf8'));
+        overrides.set(DECISIONS_LEDGER, Buffer.concat(chunks).toString('utf8'));
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
+      });
+      return;
+    }
+
+    // The real ruling-edit route (#40), running the real policy against the in-memory
+    // ledger: the panel's save path is exercised end to end — payload, refusals,
+    // response, and the `decisions` broadcast that re-renders every open panel — while
+    // still writing nothing to disk. Mirrors packages/server/src/server.ts.
+    if (url.pathname === '/api/decisions' && req.method === 'POST') {
+      const chunks = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        const fail = (status, error) => {
+          res.writeHead(status, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error }));
+        };
+        let edit;
+        try {
+          edit = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        } catch {
+          return fail(400, 'malformed request body');
+        }
+        if (!edit || typeof edit !== 'object') return fail(400, 'malformed request body');
+        let before = overrides.get(DECISIONS_LEDGER);
+        if (before === undefined) {
+          try {
+            before = fs.readFileSync(path.join(PROJECT_ROOT, DECISIONS_LEDGER), 'utf8');
+          } catch {
+            return fail(409, 'no decision ledger yet (.clyde/DECISIONS.md)');
+          }
+        }
+        const outcome = applyDecisionEdit(before, edit);
+        if (!outcome.ok) return fail(outcome.status, outcome.reason);
+        if (outcome.changed) {
+          overrides.set(DECISIONS_LEDGER, outcome.markdown);
+          fileWrites.push({ path: DECISIONS_LEDGER, text: outcome.markdown });
+        }
+        for (const ws of sockets) ws.send(JSON.stringify({ type: 'decisions', markdown: outcome.markdown }));
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, changed: outcome.changed, markdown: outcome.markdown }));
       });
       return;
     }

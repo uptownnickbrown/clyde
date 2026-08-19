@@ -19,6 +19,7 @@ import type {
 import { ClydeStore } from './store.js';
 import { GitWatcher } from './git.js';
 import { slog } from './log.js';
+import { createNoteBuffer } from './notes.js';
 import {
   dispatchUpdateFromSystemNotification,
   parseSidebarMarker,
@@ -226,14 +227,24 @@ export class AgentSession {
   >();
   private tasksWatcher: fs.FSWatcher | null = null;
   private tasksWatchTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Panel edits awaiting the debounced [Tasks edited] note (human-readable, in order). */
-  private taskEditBuffer: string[] = [];
-  private taskEditTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Tasks-panel edits awaiting their debounced [Tasks edited] note. */
+  private taskNotes = createNoteBuffer(
+    () => this,
+    (edits) =>
+      `[Tasks edited] The user edited the task list directly: ${edits.join('; ')}. ` +
+      `Take these as user intent — adjust your plan if it changes anything.`,
+  );
   private needsPrime = false;
   private pendingCompact = false;
   private costBaseline = 0;
   private abort = new AbortController();
-  private disposed = false;
+  private retired = false;
+  /** True once dispose() ran — this session emits nothing further. Public because
+   *  anything holding a deferred delivery for it (see notes.ts) has to be able to ask
+   *  whether the conversation it was addressed to still exists. */
+  get disposed(): boolean {
+    return this.retired;
+  }
 
   constructor(
     readonly store: ClydeStore,
@@ -661,12 +672,12 @@ export class AgentSession {
   /** Retire this session so a fresh one can take over (the New-session action).
    *  Aborts the SDK query and stops emitting — the store stays intact on disk. */
   dispose() {
-    if (this.disposed) return;
-    this.disposed = true;
+    if (this.retired) return;
+    this.retired = true;
     slog('session', 'info', 'session disposed', { sessionId: this.store.sessionId });
     this.git.stop();
     this.tasksWatcher?.close();
-    clearTimeout(this.taskEditTimer);
+    this.taskNotes.cancel();
     this.pendingQuestions.clear();
     this.pendingExhibits.clear();
     this.abort.abort();
@@ -974,7 +985,7 @@ export class AgentSession {
     if (!this.q) return;
     try {
       for await (const raw of this.q) {
-        if (this.disposed) break;
+        if (this.retired) break;
         try {
           this.translate(raw as any);
         } catch (err) {
@@ -990,11 +1001,11 @@ export class AgentSession {
         }
       }
     } catch (err) {
-      if (this.disposed) return; // aborted on purpose — a fresh session owns the bus now
+      if (this.retired) return; // aborted on purpose — a fresh session owns the bus now
       slog('session', 'error', 'SDK stream threw', { err: String(err) });
       this.emit({ type: 'error', message: String(err) });
     }
-    if (this.disposed) return;
+    if (this.retired) return;
     slog('session', 'warn', 'SDK stream ended');
     this.setStatus('disconnected');
   }
@@ -1297,7 +1308,7 @@ export class AgentSession {
         if (filename !== 'tasks.json') return;
         clearTimeout(this.tasksWatchTimer);
         this.tasksWatchTimer = setTimeout(() => {
-          if (this.disposed) return;
+          if (this.retired) return;
           const fresh = this.store.loadTasks();
           if (JSON.stringify(fresh) === JSON.stringify(this.tasks)) return;
           slog('session', 'info', 'tasks.json changed on disk — reloading', { count: fresh.length });
@@ -1343,9 +1354,9 @@ export class AgentSession {
 
   /** A user edit from the Tasks panel (WS edit_task): apply only the provided
    *  fields, persist + broadcast, and tell the agent — edits within a burst
-   *  debounce into ONE queued note (mirrors the Goal panel's [Goal updated]),
-   *  so direct panel edits never spam the conversation. The tasks.json write
-   *  re-fires the file watcher, whose deep-equal guard no-ops it. */
+   *  debounce into ONE queued note (see notes.ts, shared with the Artifacts and
+   *  Decisions panels), so direct panel edits never spam the conversation. The
+   *  tasks.json write re-fires the file watcher, whose deep-equal guard no-ops it. */
   editTask({ taskId, subject, status, detail }: { taskId: string; subject?: string; status?: TaskItem['status']; detail?: string }) {
     const task = this.tasks.find((t) => t.id === taskId);
     if (!task) {
@@ -1368,17 +1379,7 @@ export class AgentSession {
     if (!edits.length) return;
     slog('session', 'info', 'task edited from the panel', { taskId, edits });
     this.tasksChanged();
-    this.taskEditBuffer.push(...edits);
-    clearTimeout(this.taskEditTimer);
-    this.taskEditTimer = setTimeout(() => {
-      if (this.disposed || !this.taskEditBuffer.length) return;
-      const described = this.taskEditBuffer.join('; ');
-      this.taskEditBuffer = [];
-      this.enqueue(
-        `[Tasks edited] The user edited the task list directly: ${described}. ` +
-          `Take these as user intent — adjust your plan if it changes anything.`,
-      );
-    }, 5000);
+    for (const e of edits) this.taskNotes.push(e);
   }
 
   private tasksChanged() {
