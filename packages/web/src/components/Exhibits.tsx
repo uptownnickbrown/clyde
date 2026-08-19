@@ -89,7 +89,13 @@ function ExhibitCard({
         <button className="ex-decline" disabled={sent !== null} onClick={() => rule('declined')}>
           {sent === 'declined' ? 'Declined' : 'Decline'}
         </button>
-        <span className="q-note">{sent ? 'sending…' : 'Clyde is blocked until you rule'}</span>
+        <span className="q-note">
+          {sent
+            ? 'sending…'
+            : exhibit.blocking === false
+              ? 'Clyde keeps working — your verdict delivers when you rule'
+              : 'Clyde is blocked until you rule'}
+        </span>
       </div>
     </section>
   );

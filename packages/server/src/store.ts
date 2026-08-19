@@ -6,6 +6,8 @@ import type { SessionEvent, SessionEventBody, Thread, TaskItem, PanelSpec, Queue
 export interface SessionConfig {
   model?: string;
   effort?: string;
+  /** Model the "implementer" subagent type runs on (#32). */
+  subagentModel?: string;
 }
 
 /** All Clyde state lives as plain files under <project>/.clyde/ — committed with

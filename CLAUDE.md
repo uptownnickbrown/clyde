@@ -21,7 +21,7 @@ npm-workspaces monorepo, TypeScript throughout:
 - One linear conversation; threading is presentation only (see SCOPE.md).
 - All persistent state is plain files under `.clyde/` — never invent hidden state.
 - Commit at logical units of completed work.
-- `CLYDE_MODEL` env overrides the agent model (smoke tests use `haiku`); `CLYDE_PORT` overrides the port; `CLYDE_EFFORT` overrides reasoning effort (default xhigh); `CLYDE_STEERING=0` reverts non-urgent messages to queue-at-turn-boundary delivery (default: steer mid-turn).
+- `CLYDE_MODEL` env overrides the agent model (smoke tests use `haiku`); `CLYDE_PORT` overrides the port; `CLYDE_EFFORT` overrides reasoning effort (default xhigh); `CLYDE_STEERING=0` reverts non-urgent messages to queue-at-turn-boundary delivery (default: steer mid-turn); `CLYDE_SUBAGENT_MODEL` overrides what "implementer" subagents run on (default claude-opus-5 — the critic inherits the main model); `CLYDE_ASIDE_MODEL` overrides the /btw observer (default claude-haiku-4-5).
 - The server resumes the latest session (event log + SDK `resume`) on boot — server restarts, including tsx-watch restarts from editing server code, are survivable. Pass `--new` for a fresh session. Resume also backfills events the SDK CLI produced that a dying server never logged, from the CLI's own transcript (`packages/server/src/backfill.ts`; offline check: `npm run qa:backfill`).
 - Server diagnostics: structured JSONL at `.clyde/logs/server.jsonl` (gitignored); tail via `GET /api/logs?tail=N`. Commit detail via `GET /api/commit?sha=<sha>`. Read the log when debugging Clyde itself.
 
@@ -57,6 +57,9 @@ parallel in-tree agents collide on hotspot files (`App.tsx`, `Sidebars.tsx`,
   user-facing in the previous message and let it flush first.
 - **Gate before closing tasks**: typecheck, fixture screenshots
   (`node qa/screenshot.mjs`), and a live-drive pass (`qa/live-drive.mjs` against
-  a scratch project on port 4141) whenever server behavior changed.
+  a scratch project on port 4141) whenever server behavior changed. Substantial
+  work additionally faces the read-only `critic` agent type before task-close or
+  a merge lands (brief = goal + criteria + diff + evidence; it hunts reasons NOT
+  to accept); surface its verdict via a request_review exhibit with the taskId.
 - **Clean up**: `git worktree remove` agent + merge worktrees, delete merged
   branches. `.claude/worktrees/` is gitignored.

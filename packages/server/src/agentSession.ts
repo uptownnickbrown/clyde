@@ -55,17 +55,33 @@ project state lives in on-screen panels. Follow these standing orders:
 - **Tasks**: keep your task list current; the user sees it live in a panel. The task
   tools work, and editing .clyde/tasks.json directly is equivalent — the server
   watches the file.
-- **QA panels**: when you produce visual QA artifacts (screenshots, plots, reports,
-  metrics), publish them to the UI with the push_panel tool so the user can judge
-  them without digging through files.
-- **Exhibits**: when a task's evidence needs human judgment — QA screenshots, metrics,
-  data tables, an ad hoc HTML artifact — call request_review with that evidence, the
-  taskId, and what you want judged, then WAIT: the tool blocks until the user rules.
-  The verdict IS the acceptance gate — approved means the task can close; declined
-  comes with a comment, so fix exactly that and push a fresh review. Never mark work
-  accepted on your own say-so, and never narrate evidence you could show: put the
-  thing in front of the user and let them judge. push_panel is for reference artifacts
-  nobody has to rule on; request_review is for anything gating acceptance.
+- **Evidence — the response contract**: two lanes, routed by what you need back.
+  push_panel is AMBIENT REFERENCE (left rail): standing surfaces the user consults
+  but never answers — a QA gallery tracking every run, a metrics dashboard, a report
+  kept at hand. request_review is JUDGMENT (right attention surface): anything that
+  should not count as done until a human rules. Default to asking at judgment-worthy
+  checkpoints; never route "I finished something" into the skippable ambient lane.
+- **Author the evidence**: choose the representation that makes judgment easiest and
+  BUILD it — training/eval curves → write a self-contained HTML/SVG plot file and
+  push kind "html"; comparisons or results → a JSON table file, kind "table"; visual
+  work → a screenshot set; a doc that needs the user's pen → kind "markdown" (pushed
+  markdown panels are editable in place; you are notified on save). Never dump a raw
+  artifact when a clearer representation is one authored file away, and never narrate
+  evidence you could show. An artifact without framing is not evidence: title + detail
+  must say what it is and exactly what judgment you want.
+- **Verdicts gate acceptance**: request_review blocks by default — approved means the
+  task can close; declined comes with a comment, so fix exactly that and push a fresh
+  review. Never mark work accepted on your own say-so. Pass blocking:false only when
+  you have other non-gated work to continue; the verdict arrives as a message when
+  the user rules, and the gate still applies.
+- **Verify before closing**: substantial work faces the critic before you mark it
+  completed — dispatch a Task with subagent_type "critic", briefed with the goal +
+  success criteria (SCOPE.md), the exact diff or commits under review, and where the
+  QA evidence lives. The critic hunts for reasons NOT to accept; it never fixes.
+  Surface its verdict via request_review with the taskId attached when the bar looks
+  met or the call needs human judgment. When you complete a task, record the closing
+  commit sha in its tasks.json entry ("commit": "<sha>") so done work carries its
+  proof chain.
 - **Reviews**: batch feedback runs the intake ceremony. Messages tagged
   [Review intake] arrive with the full script — follow it exactly (distill to
   numbered items → echo them → clarify ambiguities in one AskUserQuestion →
@@ -76,11 +92,12 @@ project state lives in on-screen panels. Follow these standing orders:
   dump) before diving into fixes. Legacy checklist reviews in .clyde/reviews/*.md
   still get triaged item-by-item; nothing is ever silently dropped.
 - **Delegate aggressively**: hand substantial, well-scoped implementation work to
-  subagents via the Task tool while you coordinate, review their output, and stay
-  responsive in the conversation. When delegating a task-list item, put its exact
-  subject in the Task description and mark it in_progress — the UI links them.
-  Worktree briefs, base pinning, merge trains, and QA gates: follow CLAUDE.md
-  § Agent operations to the letter.
+  subagents via the Task tool — subagent_type "implementer" for building (it runs
+  the configured subagent model), "critic" for verification — while you coordinate,
+  review their output, and stay responsive in the conversation. When delegating a
+  task-list item, put its exact subject in the Task description and mark it
+  in_progress — the UI links them. Worktree briefs, base pinning, merge trains, and
+  QA gates: follow CLAUDE.md § Agent operations to the letter.
 - **Mid-turn messages**: when user messages arrive while you are working, answer
   each one before continuing the work — sidebar comments FIRST, via the
   reply_in_thread tool. Filing a task is in addition to replying, never instead of
@@ -94,6 +111,40 @@ project state lives in on-screen panels. Follow these standing orders:
   a sidebar comment only in main-flow prose — the user is looking at the thread
   card, and prose elsewhere reads as silence.
 `;
+
+/** System prompt for the "implementer" agent type — the default vehicle for
+ *  delegated builds. Kept generic: the dispatch brief carries the specifics. */
+const IMPLEMENTER_PROMPT = `You are a Clyde implementation subagent. Execute the brief you were
+dispatched with exactly: honor its pinned base, scope boundaries, ground rules, and gates. Never
+merge branches, never write under .clyde/, never start dev servers. Commit completed work as the
+brief directs. Your final message is a report consumed by the coordinator — return data (what you
+did, files touched, decisions made, risks, gate evidence), not prose for a human audience.`;
+
+/** System prompt for the "critic" agent type — adversarial verification (#27).
+ *  Read-only by construction (no Write/Edit/Task); Bash is for inspection and for
+ *  RUNNING the evidence (tests, checks, builds), never mutation. */
+const CRITIC_PROMPT = `You are the CRITIC — a read-only verification agent. Your only job is to
+find reasons NOT to accept the work under review. You never fix, improve, or implement anything;
+if you catch yourself planning a change, stop — report the finding instead.
+
+Your dispatch brief gives you: the goal and success criteria, the diff or commits under review,
+and where the QA evidence lives. Judge the work against the GOAL DOCUMENT'S bar for this project
+— what quality means here derives from the goal doc, never from a generic rubric.
+
+Method:
+- Read the diff/commits yourself; do not trust the implementer's summary of them.
+- Re-run the evidence where possible (test suites, checks, builds) instead of trusting reports;
+  Bash is available for exactly this and for git inspection — never for mutation. Do not write
+  files, do not commit, do not touch .clyde/, do not delegate.
+- Hunt specifically: success criteria not actually met; claims without evidence; evidence that
+  does not support the claim it decorates; regressions in behavior the goal cares about; quality
+  below the goal's bar even where tests pass.
+
+Verdict — your final message, as data:
+  verdict: accept | reject | needs-human-judgment
+  reasons: each one concrete and checkable (file, criterion, observed vs claimed)
+  examined: what you actually read and ran
+Reject needs at least one concrete reason. Accept means you tried to break the claim and failed.`;
 
 /** Silent plumbing prepended to a brand-new session's first message. */
 const NEW_SESSION_PRIME =
@@ -138,7 +189,13 @@ export class AgentSession {
   /** Blocking request_review calls awaiting a verdict, keyed by exhibit id. Live
    *  resolvers are the ONLY thing that makes an exhibit pending — they die with the
    *  process, which is exactly why a restart leaves the card 'expired'. */
-  private pendingExhibits = new Map<string, { resolve: (r: ExhibitDecision) => void }>();
+  private pendingExhibits = new Map<
+    string,
+    /** resolve present = a blocking request_review holds the turn. Absent = a
+     *  non-blocking post: the verdict is DELIVERED as a message instead, and the
+     *  entry survives turn boundaries (only ruling or dispose clears it). */
+    { title: string; resolve?: (r: ExhibitDecision) => void }
+  >();
   private tasksWatcher: fs.FSWatcher | null = null;
   private tasksWatchTimer: ReturnType<typeof setTimeout> | undefined;
   /** Panel edits awaiting the debounced [Tasks edited] note (human-readable, in order). */
@@ -155,6 +212,10 @@ export class AgentSession {
     private bus: Broadcast,
     readonly model = process.env.CLYDE_MODEL ?? 'claude-fable-5',
     readonly effort = process.env.CLYDE_EFFORT ?? 'xhigh',
+    /** What "implementer" subagents run on. Encoded, not inherited: implementation
+     *  grunt work burns most tokens and doesn't need the frontier model — the
+     *  critic does, and deliberately inherits `model` instead (#32). */
+    readonly subagentModel = process.env.CLYDE_SUBAGENT_MODEL ?? 'claude-opus-5',
   ) {
     this.threads = store.loadThreads();
     this.tasks = store.loadTasks();
@@ -196,15 +257,15 @@ export class AgentSession {
       tools: [
         tool(
           'push_panel',
-          'Publish or update a panel in the Clyde UI so the user can see an artifact without digging through files. Panels persist across the session.',
+          'Publish or update an AMBIENT reference panel in the left rail — a standing surface the user consults but never has to answer: a QA gallery tracking every run, a metrics dashboard, a report kept at hand. No response comes back; for finished work that needs judgment use request_review instead. AUTHOR the representation: for curves write a self-contained HTML/SVG plot file (kind "html"); for results write a JSON table file (kind "table"); pushed markdown is user-editable in place and you are notified on save. Panels persist across the session.',
           {
             id: z.string().describe('Stable panel id; pushing the same id updates the panel'),
-            kind: z.enum(['image-gallery', 'markdown', 'metrics', 'iframe']),
+            kind: z.enum(['image-gallery', 'markdown', 'metrics', 'iframe', 'html', 'table']),
             title: z.string(),
             source: z
               .string()
               .describe(
-                'image-gallery: a glob relative to the project root (e.g. "qa/screenshots/*.png"). markdown/metrics: a file path. iframe: a URL.',
+                'image-gallery: a glob relative to the project root (e.g. "qa/screenshots/*.png"). markdown/metrics: a file path. iframe: a URL. html: path to a self-contained HTML file YOU author (plot, report, interactive — rendered in a sandboxed iframe). table: path to a JSON file {"columns": string[], "rows": (string|number)[][]}.',
               ),
           },
           async (args) => {
@@ -214,16 +275,16 @@ export class AgentSession {
         ),
         tool(
           'request_review',
-          'Put evidence in front of the user and BLOCK until they approve or decline it. Use this when a piece of work needs human judgment before it counts as done — QA screenshots, metrics, a data table, an ad hoc HTML artifact. The card renders on the workbench attention surface; this call does not return until the user rules, and the verdict (with their comment) comes back as the result. push_panel is the non-blocking sibling for reference artifacts nobody has to judge.',
+          'Put evidence in front of the user for a verdict. Use this whenever work needs human judgment before it counts as done — QA screenshots, an HTML plot or interactive you authored, a data table, metrics, a doc. Choose the representation that makes judgment easiest, and say specifically what you want judged (detail). The card renders on the workbench attention surface. By default this call BLOCKS until the user rules and the verdict (with their comment) is the result. Pass blocking:false only when you have other non-gated work: the call returns "posted" immediately and the verdict arrives later as a user message — the acceptance gate still applies. push_panel is the ambient sibling for reference artifacts nobody has to judge.',
           {
             title: z.string().describe('What the user is being asked to judge, e.g. "Responsive pass — 4 viewports"'),
             content: z
               .object({
-                kind: z.enum(['image-gallery', 'markdown', 'metrics', 'iframe']),
+                kind: z.enum(['image-gallery', 'markdown', 'metrics', 'iframe', 'html', 'table']),
                 source: z
                   .string()
                   .describe(
-                    'image-gallery: a glob relative to the project root (e.g. "qa/screenshots/*.png"). markdown/metrics: a file path. iframe: a URL.',
+                    'image-gallery: a glob relative to the project root (e.g. "qa/screenshots/*.png"). markdown/metrics: a file path. iframe: a URL. html: path to a self-contained HTML file YOU author (plot, report, interactive — rendered in a sandboxed iframe). table: path to a JSON file {"columns": string[], "rows": (string|number)[][]}.',
                   ),
               })
               .describe('The evidence itself — same content vocabulary as push_panel'),
@@ -232,14 +293,34 @@ export class AgentSession {
               .optional()
               .describe('The task this evidence gates, if any — the card links it and the verdict is its acceptance gate'),
             detail: z.string().optional().describe('What specifically you want judged, in a sentence or two'),
+            blocking: z
+              .boolean()
+              .optional()
+              .describe('Default true (wait for the verdict). false = post the card and continue non-gated work; the verdict arrives as a message when the user rules'),
           },
           async (args) => {
-            const decision = await this.requestReview({
+            const req = {
               title: args.title,
               content: panelContentOf(args.content.kind, args.content.source),
               taskId: args.taskId,
               detail: args.detail,
-            });
+            };
+            if (args.blocking === false) {
+              const exhibitId = this.postReviewAsync(req);
+              return {
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: JSON.stringify({
+                      posted: true,
+                      exhibitId,
+                      note: 'The user will rule asynchronously; continue non-gated work. Their verdict arrives as a message.',
+                    }),
+                  },
+                ],
+              };
+            }
+            const decision = await this.requestReview(req);
             // Structured so the agent branches on the outcome, not on prose.
             return {
               content: [
@@ -294,6 +375,28 @@ export class AgentSession {
         // ride in on the user's login and nag the agent about OAuth.
         strictMcpConfig: true,
         mcpServers: { clyde: clydeTools },
+        // Named agent types make model choice and tool surfaces STRUCTURAL — the
+        // standing orders route dispatches through them rather than asking nicely.
+        agents: {
+          implementer: {
+            description:
+              'Briefed implementation work: a self-contained build/fix/refactor task with explicit ' +
+              'scope, ground rules, and gates. The default agent type for delegated implementation.',
+            prompt: IMPLEMENTER_PROMPT,
+            model: this.subagentModel,
+          },
+          critic: {
+            description:
+              'Adversarial verification before acceptance: reviews completed work against the goal ' +
+              'and its evidence, hunting for reasons NOT to accept. Read-only by construction — it ' +
+              'can run tests and inspect git but cannot write, edit, or delegate. Dispatch at ' +
+              'task-close and merge gates, or whenever a claim of "done" needs challenging.',
+            prompt: CRITIC_PROMPT,
+            tools: ['Read', 'Glob', 'Grep', 'Bash'],
+            // model omitted on purpose: the critic inherits the MAIN model —
+            // adversarial judgment is what the frontier model is for.
+          },
+        },
         // AskUserQuestion always falls through to canUseTool, even under
         // bypassPermissions — that fallthrough is the question-card pipeline.
         canUseTool: (toolName: string, input: any) => this.onCanUseTool(toolName, input),
@@ -731,12 +834,33 @@ export class AgentSession {
    *  wait — with no timeout, exactly like the question hold. Verification is the
    *  point; a review that times out into an assumed pass would be worse than none. */
   private requestReview(req: { title: string; content: PanelContent; taskId?: string; detail?: string }): Promise<ExhibitDecision> {
-    const exhibitId = crypto.randomUUID();
+    const exhibitId = this.emitExhibit(req, true);
     slog('session', 'info', 'exhibit pushed — turn blocked on a verdict', {
       exhibitId: exhibitId.slice(0, 8),
       kind: req.content.kind,
       taskId: req.taskId,
     });
+    this.setStatus('awaiting_input');
+    return new Promise<ExhibitDecision>((resolve) => {
+      this.pendingExhibits.set(exhibitId, { title: req.title, resolve });
+    });
+  }
+
+  /** The non-blocking half: post the card and return immediately — the turn keeps
+   *  working, and the verdict is delivered to the agent as a message on settle. */
+  private postReviewAsync(req: { title: string; content: PanelContent; taskId?: string; detail?: string }): string {
+    const exhibitId = this.emitExhibit(req, false);
+    slog('session', 'info', 'exhibit posted non-blocking — verdict will deliver as a message', {
+      exhibitId: exhibitId.slice(0, 8),
+      kind: req.content.kind,
+      taskId: req.taskId,
+    });
+    this.pendingExhibits.set(exhibitId, { title: req.title });
+    return exhibitId;
+  }
+
+  private emitExhibit(req: { title: string; content: PanelContent; taskId?: string; detail?: string }, blocking: boolean): string {
+    const exhibitId = crypto.randomUUID();
     this.emit({
       type: 'exhibit',
       exhibitId,
@@ -744,12 +868,10 @@ export class AgentSession {
       content: req.content,
       ...(req.taskId ? { taskId: req.taskId } : {}),
       ...(req.detail ? { detail: req.detail } : {}),
+      ...(blocking ? {} : { blocking: false }),
       turnId: this.currentDelivery?.turnId ?? 'unattributed',
     });
-    this.setStatus('awaiting_input');
-    return new Promise<ExhibitDecision>((resolve) => {
-      this.pendingExhibits.set(exhibitId, { resolve });
-    });
+    return exhibitId;
   }
 
   /** The user ruled from the workbench (WS exhibit_response). The verdict returns to
@@ -769,10 +891,21 @@ export class AgentSession {
     const trimmed = comment?.trim();
     slog('session', 'info', 'exhibit settled', { exhibitId: exhibitId.slice(0, 8), verdict, commented: Boolean(trimmed) });
     this.emit({ type: 'exhibit_settled', exhibitId, verdict, ...(trimmed ? { comment: trimmed } : {}) });
-    // Back to working only when nothing else still holds the turn (an agent can push
-    // more than one blocking call in a single assistant message).
-    if (!this.pendingExhibits.size && !this.pendingQuestions.size) this.setStatus('working');
-    pending.resolve({ verdict, comment: trimmed });
+    if (pending.resolve) {
+      // Blocking: the verdict goes back as the tool result. Back to working only
+      // when nothing else still holds the turn (an agent can push more than one
+      // blocking call in a single assistant message).
+      if (![...this.pendingExhibits.values()].some((p) => p.resolve) && !this.pendingQuestions.size) {
+        this.setStatus('working');
+      }
+      pending.resolve({ verdict, comment: trimmed });
+    } else {
+      // Non-blocking: nobody is awaiting — deliver the verdict as a message (it
+      // steers mid-turn or starts a turn from idle, like any user note).
+      this.enqueue(
+        `[Exhibit verdict] "${pending.title}": ${verdict}${trimmed ? ` — ${trimmed}` : ''} (exhibit ${exhibitId.slice(0, 8)})`,
+      );
+    }
   }
 
   /** Snapshot view: every exhibit in the log, with status from the live resolvers.
@@ -787,8 +920,10 @@ export class AgentSession {
           content: e.content,
           ...(e.taskId ? { taskId: e.taskId } : {}),
           ...(e.detail ? { detail: e.detail } : {}),
+          ...(e.blocking === false ? { blocking: false } : {}),
           ts: e.ts,
-          // Unsettled and unheld = the blocked call died with a restart or an interrupt.
+          // Unsettled and unheld = the call (or the non-blocking entry) died with a
+          // restart or an interrupt.
           status: this.pendingExhibits.has(e.exhibitId) ? 'pending' : 'expired',
         });
       } else if (e.type === 'exhibit_settled') {
@@ -970,13 +1105,16 @@ export class AgentSession {
           });
           this.pendingQuestions.clear();
         }
-        // Same for exhibits: a blocking review can only outlive its turn if the turn
-        // was interrupted or aborted, and a verdict nobody is waiting for is a lie.
-        if (this.pendingExhibits.size) {
-          slog('session', 'warn', 'turn ended with unsettled exhibit(s) — expiring', {
-            count: this.pendingExhibits.size,
+        // Same for BLOCKING exhibits: one can only outlive its turn if the turn was
+        // interrupted or aborted, and a verdict nobody is waiting for is a lie.
+        // Non-blocking posts are the opposite: outliving the turn is their design —
+        // the verdict delivers as a message — so they survive until ruled or dispose.
+        const blocked = [...this.pendingExhibits.entries()].filter(([, p]) => p.resolve);
+        if (blocked.length) {
+          slog('session', 'warn', 'turn ended with unsettled blocking exhibit(s) — expiring', {
+            count: blocked.length,
           });
-          this.pendingExhibits.clear();
+          for (const [id] of blocked) this.pendingExhibits.delete(id);
         }
         slog('session', 'info', 'turn complete', {
           turnId: turnId.slice(0, 8),

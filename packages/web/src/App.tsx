@@ -287,6 +287,7 @@ export default function App() {
             status={state.status}
             queue={state.queue}
             model={state.model}
+            subagentModel={state.subagentModel}
             effort={state.effort}
             asides={state.asides}
             onDismissAside={dismissAside}

@@ -53,6 +53,8 @@ export interface UIState {
   gitStatus: GitStatus | null;
   model: string | null;
   effort: string | null;
+  /** Model the "implementer" subagent type runs on (#32). */
+  subagentModel: string | null;
   /** Live /btw asides, oldest first. Transient: never restored on reconnect. */
   asides: AsideCard[];
 }
@@ -76,6 +78,7 @@ const initial: UIState = {
   gitStatus: null,
   model: null,
   effort: null,
+  subagentModel: null,
   asides: [],
 };
 
@@ -187,6 +190,7 @@ function reducer(state: UIState, action: Action): UIState {
         gitStatus: s.gitStatus ?? null,
         model: s.model ?? null,
         effort: s.effort ?? null,
+        subagentModel: s.subagentModel ?? null,
         // Asides are client-side cards, not session state: a hello (reconnect,
         // new session, model rotation) must not sweep away answers the user is
         // still reading. Only a page reload drops them.

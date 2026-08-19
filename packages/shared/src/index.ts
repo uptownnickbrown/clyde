@@ -120,6 +120,10 @@ export interface Exhibit {
   comment?: string;
   /** When the verdict landed (status approved | declined). */
   settledTs?: string;
+  /** false = a non-blocking review: the agent kept working and the verdict is
+   *  delivered to it as a message when the user rules. Absent/true = the
+   *  request_review tool call is holding the turn open. */
+  blocking?: boolean;
 }
 
 // ---------- Git ----------
@@ -206,6 +210,8 @@ export type SessionEventBody =
       content: PanelContent;
       taskId?: string;
       detail?: string;
+      /** false = non-blocking (posted; the agent continues non-gated work). */
+      blocking?: boolean;
       turnId: string;
     }
   /** The user ruled; the verdict is already on its way back as the tool result. */
@@ -267,7 +273,7 @@ export type ClientMessage =
   | { type: 'new_session' }
   /** Switch the agent's model/effort: the server rotates the session in place
    *  (dispose + resume same SDK conversation under the new settings). Idle only. */
-  | { type: 'set_model'; model: string; effort: string }
+  | { type: 'set_model'; model: string; effort: string; subagentModel?: string }
   /** User-edited a task from the Tasks panel. Only the provided fields change;
    *  the server applies + persists them and notifies the agent (debounced into
    *  one note per editing burst, like the Goal panel's save). */
@@ -296,6 +302,9 @@ export interface Snapshot {
   model?: string;
   /** Reasoning effort the session runs at (low | medium | high | xhigh | max). */
   effort?: string;
+  /** Model implementation subagents run on (the "implementer" agent type). The
+   *  critic deliberately inherits the MAIN model — judgment stays frontier. */
+  subagentModel?: string;
 }
 
 export type ServerMessage =

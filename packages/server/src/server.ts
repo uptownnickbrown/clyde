@@ -43,7 +43,7 @@ export async function startServer(projectRoot: string, port: number, freshSessio
 
   // Session config (model/effort picker) survives restarts alongside the event log.
   const bootConfig = store.loadConfig();
-  let session = new AgentSession(store, bus, bootConfig?.model, bootConfig?.effort);
+  let session = new AgentSession(store, bus, bootConfig?.model, bootConfig?.effort, bootConfig?.subagentModel);
   const sdkSessionId = resumeId ? store.findSdkSessionId() : null;
   session.start(sdkSessionId ?? undefined);
 
@@ -77,6 +77,7 @@ export async function startServer(projectRoot: string, port: number, freshSessio
       gitStatus,
       model: session.model,
       effort: session.effort,
+      subagentModel: session.subagentModel,
     };
   };
 
@@ -262,11 +263,11 @@ export async function startServer(projectRoot: string, port: number, freshSessio
           // and the fresh session starts with a clean event log + SDK conversation.
           // Model/effort carry forward — the chip the user sees must not silently revert.
           slog('server', 'info', 'new session requested', { previous: store.sessionId });
-          const carry = { model: session.model, effort: session.effort };
+          const carry = { model: session.model, effort: session.effort, subagentModel: session.subagentModel };
           session.dispose();
           store = new ClydeStore(projectRoot);
           store.saveConfig(carry);
-          session = new AgentSession(store, bus, carry.model, carry.effort);
+          session = new AgentSession(store, bus, carry.model, carry.effort, carry.subagentModel);
           session.start();
           void buildSnapshot().then((snapshot) => {
             for (const c of clients) send(c, { type: 'hello', snapshot });
@@ -280,23 +281,28 @@ export async function startServer(projectRoot: string, port: number, freshSessio
           // doubles as recovery when the stream died).
           const MODELS = ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'];
           const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+          const subagent = msg.subagentModel ?? session.subagentModel;
           if ((!MODELS.includes(msg.model) && msg.model !== session.model) || !EFFORTS.includes(msg.effort)) {
             slog('server', 'warn', 'set_model refused: unknown model/effort', { model: msg.model, effort: msg.effort });
+            break;
+          }
+          if (!MODELS.includes(subagent) && subagent !== session.subagentModel) {
+            slog('server', 'warn', 'set_model refused: unknown subagent model', { subagentModel: subagent });
             break;
           }
           if (session.status !== 'idle' && session.status !== 'disconnected') {
             slog('server', 'warn', 'set_model refused: session not idle', { status: session.status });
             break;
           }
-          if (msg.model === session.model && msg.effort === session.effort) break;
+          if (msg.model === session.model && msg.effort === session.effort && subagent === session.subagentModel) break;
           slog('server', 'info', 'model/effort switch — rotating session', {
-            from: `${session.model}/${session.effort}`,
-            to: `${msg.model}/${msg.effort}`,
+            from: `${session.model}/${session.effort} (agents ${session.subagentModel})`,
+            to: `${msg.model}/${msg.effort} (agents ${subagent})`,
           });
-          store.saveConfig({ model: msg.model, effort: msg.effort });
+          store.saveConfig({ model: msg.model, effort: msg.effort, subagentModel: subagent });
           const sdk = store.findSdkSessionId();
           session.dispose();
-          session = new AgentSession(store, bus, msg.model, msg.effort);
+          session = new AgentSession(store, bus, msg.model, msg.effort, subagent);
           session.start(sdk ?? undefined);
           void buildSnapshot().then((snapshot) => {
             for (const c of clients) send(c, { type: 'hello', snapshot });

@@ -24,41 +24,50 @@ const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 function ModelPicker({
   model,
   effort,
+  subagentModel,
   busy,
   send,
 }: {
   model: string;
   effort: string | null;
+  subagentModel: string | null;
   busy: boolean;
   send: (msg: ClientMessage) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pickModel, setPickModel] = useState(model);
   const [pickEffort, setPickEffort] = useState(effort ?? 'xhigh');
+  const subagent = subagentModel ?? 'claude-opus-5';
+  const [pickSubagent, setPickSubagent] = useState(subagent);
   // A scratch session may run an alias (CLYDE_MODEL=haiku) — keep it selectable.
   const options: [string, string][] = MODELS.some(([id]) => id === model)
     ? MODELS
     : [[model, model.replace(/^claude-/, '')], ...MODELS];
-  const dirty = pickModel !== model || pickEffort !== (effort ?? 'xhigh');
+  const subagentOptions: [string, string][] = MODELS.some(([id]) => id === subagent)
+    ? MODELS
+    : [[subagent, subagent.replace(/^claude-/, '')], ...MODELS];
+  const dirty = pickModel !== model || pickEffort !== (effort ?? 'xhigh') || pickSubagent !== subagent;
   return (
     <span className="model-picker">
       <button
         className="model-chip"
-        title="Switch the agent model or reasoning effort"
+        title="Switch the session model, reasoning effort, or the subagent model"
         onClick={() => {
           setPickModel(model);
           setPickEffort(effort ?? 'xhigh');
+          setPickSubagent(subagent);
           setOpen((o) => !o);
         }}
       >
         {model.replace(/^claude-/, '')}
         {effort ? ` · ${effort}` : ''}
+        {subagentModel && subagentModel !== model ? ` · agents: ${subagentModel.replace(/^claude-/, '')}` : ''}
       </button>
       {open && (
         <>
           <div className="model-pop-backdrop" onClick={() => setOpen(false)} />
           <div className="model-pop">
-            <div className="model-pop-label">Model</div>
+            <div className="model-pop-label">Session</div>
             {options.map(([id, label]) => (
               <button
                 key={id}
@@ -66,6 +75,18 @@ function ModelPicker({
                 onClick={() => setPickModel(id)}
               >
                 {pickModel === id ? '●' : '○'} {label}
+              </button>
+            ))}
+            <div className="model-pop-label" title="What implementer subagents run on; the critic inherits the session model">
+              Subagents
+            </div>
+            {subagentOptions.map(([id, label]) => (
+              <button
+                key={id}
+                className={`model-opt${pickSubagent === id ? ' selected' : ''}`}
+                onClick={() => setPickSubagent(id)}
+              >
+                {pickSubagent === id ? '●' : '○'} {label}
               </button>
             ))}
             <div className="model-pop-label">Effort</div>
@@ -85,7 +106,7 @@ function ModelPicker({
                 className="primary"
                 disabled={!dirty || busy}
                 onClick={() => {
-                  send({ type: 'set_model', model: pickModel, effort: pickEffort });
+                  send({ type: 'set_model', model: pickModel, effort: pickEffort, subagentModel: pickSubagent });
                   setOpen(false);
                 }}
               >
@@ -154,6 +175,7 @@ export function Composer({
   queue,
   model,
   effort,
+  subagentModel,
   asides,
   onDismissAside,
   send,
@@ -162,6 +184,7 @@ export function Composer({
   queue: QueuedItem[];
   model: string | null;
   effort: string | null;
+  subagentModel: string | null;
   asides: AsideCard[];
   onDismissAside: (asideId: string) => void;
   send: (msg: ClientMessage) => void;
@@ -357,7 +380,13 @@ export function Composer({
             ⌥ /btw
           </button>
           {model && (
-            <ModelPicker model={model} effort={effort} busy={working || status === 'awaiting_input'} send={send} />
+            <ModelPicker
+              model={model}
+              effort={effort}
+              subagentModel={subagentModel}
+              busy={working || status === 'awaiting_input'}
+              send={send}
+            />
           )}
         </div>
         <div>

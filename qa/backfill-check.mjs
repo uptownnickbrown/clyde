@@ -351,6 +351,11 @@ console.log('12. delta-journal recovery');
     wrapped,
   );
   check('unknown status defaults to pending', normalizeTasks([{ id: 9, subject: 'x', status: 'wip' }])[0].status === 'pending');
+  check(
+    'closing-commit sha passes through stringified (#29)',
+    normalizeTasks([{ id: 9, subject: 'x', status: 'completed', commit: 'abc1234' }])[0].commit === 'abc1234' &&
+      normalizeTasks([{ id: 9, subject: 'x', status: 'completed' }])[0].commit === undefined,
+  );
   check('entries without id/subject dropped', normalizeTasks([{ subject: 'no id' }, { id: 3 }, null, 'junk']).length === 0);
   check('non-array garbage -> empty list', normalizeTasks('nope').length === 0 && normalizeTasks({ a: 1 }).length === 0 && normalizeTasks(null).length === 0);
 }
