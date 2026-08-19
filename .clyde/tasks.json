@@ -279,7 +279,8 @@
   {
     "id": "39",
     "subject": "Reviews panel: resolve raw dump via task source.review, graceful when missing",
-    "status": "pending",
+    "status": "completed",
+    "commit": "8d992a9",
     "detail": "User hit 'not found' on show-raw-dump for the 2026-08-19-critic-overnight-closeout batch: the panel resolves the dump as .clyde/reviews/<batch>.md, but batches can be spawned by non-ceremony flows (critic verdicts) whose tasks carry an explicit source.review path elsewhere. Fixed the DATA today by moving the verdict file into .clyde/reviews/ — the code fix: prefer the batch tasks' source.review path when present (they all share it), fall back to .clyde/reviews/<batch>.md, and when neither exists render an honest explanatory state ('dump not on disk — provenance may be gitignored or pre-date the batch') instead of bare 'not found'. Web-only (PanelContent/Reviews component + maybe the /api/project-file fetch path).",
     "source": {
       "review": ".clyde/reviews/2026-08-19-critic-overnight-closeout.md"
@@ -289,7 +290,7 @@
   {
     "id": "40",
     "subject": "Decisions panel: edit and delete rulings from the UI",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "User request 2026-08-19: a way to delete and/or modify Decisions. Mirror the Goal-edit pattern (#12): pencil/delete affordances on decision cards -> POST /api/decisions writes DECISIONS.md (it is the durable ledger — the file IS the source of truth), broadcast to clients, ONE debounced [Decisions edited] note to the agent so standing orders stay honest (an edited/removed ruling must not be silently re-litigated FROM MEMORY — the agent should acknowledge the ledger changed). Edits should preserve the one-line ledger format; delete should probably strike-through-with-reason or truly remove — decide with a question card at build time if ambiguous. Server-touching -> worktree dispatch.",
     "source": {
       "review": ".clyde/uploads/2026-08-19T14-00-12-Screenshot_2026-08-19_at_10.00.09_AM.png"
@@ -300,7 +301,7 @@
     "subject": "Engineering-assurance wave: SCOPE section + design-session rulings",
     "status": "completed",
     "commit": "6983058",
-    "detail": "From the 2026-08-19 grilling session (12 forks settled, 11 on recommendation, 1 deviation): add the engineering-assurance wave to SCOPE.md — the third question ('did we build it so the future stays cheap?') as the rigor pillar extended into the future tense; mechanisms in build order (constitution → posture ceremony → maintainer agent → change drills) with cut lines (tripwires/calibration/quality-lens = v2); the drag ledger principle (ordinary tasks pay ZERO ceremony; the attention surface interrupts only for 'spend money now?' and 'a prediction failed'). Append the settled rulings to DECISIONS.md.",
+    "detail": "From the 2026-08-19 grilling session (12 forks settled, 11 on recommendation, 1 deviation): add the engineering-assurance wave to SCOPE.md — the third question ('did we build it so the future stays cheap?') as the rigor pillar extended into the future tense; mechanisms in build order (constitution → posture ceremony → maintainer agent → change drills) with cut lines (tripwires/calibration/quality-lens = v2); the drag ledger principle (ordinary tasks pay ZERO ceremony; the attention surface interrupts only for 'spend money now?' and 'a prediction failed'). Append the settled rulings to DECISIONS.md. CORRECTION (critic pass on the wave): the closing commit's subject says '8 rulings' — the diff holds 7. Commit messages are immutable; the correction lives here (the #37 pattern).",
     "batch": "2026-08-19-engineering-assurance"
   },
   {

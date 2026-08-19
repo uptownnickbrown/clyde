@@ -15,8 +15,9 @@ Keep it short: a constitution agents skim is a constitution that doesn't exist.
    (`packages/shared`) change first, deliberately; a contract change names its
    consumers. Nothing "just happens" to a shape two packages depend on.
 3. **Dependencies point one way.** `server` and `web` import `shared`; they never
-   import each other — they meet only at the wire. A new dependency direction is an
-   architectural event, not a convenience.
+   import each other — they meet only at the wire (the server ships web's *built*
+   assets; no source crosses). A new dependency direction is an architectural
+   event, not a convenience.
 4. **Duplication beats the wrong abstraction.** Abstractions are earned by a second
    *real* caller, not a hypothetical one. Inline twice, extract on the third —
    unless a recorded posture decision bought the seam early.
@@ -30,9 +31,11 @@ Keep it short: a constitution agents skim is a constitution that doesn't exist.
    call or a typed field, never a formatting convention in prose. (Ratified from the
    0/22 sidebar-marker episode, 2026-08-18.)
 8. **New nouns face the lifecycle test.** An object earns persistence only with a
-   lifecycle no existing noun can carry; otherwise build a lens over existing nouns.
+   lifecycle no existing noun can carry; otherwise build a lens over existing
+   nouns. (Ratified from the lifecycle-test ruling, 2026-08-18.)
 9. **State is plain files.** Everything durable lives in files the model can read
-   and git can version — no hidden state that dies with a process.
+   and git can version — no hidden state that dies with a process. (Ratified from
+   the files-are-the-database ruling, 2026-08-18.)
 10. **Leave it more understandable than you found it.** The measure is a cold
     reader — human or agent, no conversation context — rapidly forming the correct
     mental model of where things live and why.
@@ -53,6 +56,12 @@ review and change drills as they land) — ordinary work pays zero ceremony.
 - **Cross-package change** — one logical change touching `shared` + `server` +
   `web` is a contract change wearing three coats.
 
+**Not significant** (the common case): routine content edits to `.clyde/` files —
+task entries, ruling appends, review dumps (only *format* changes trigger); a new
+file carved out of an existing responsibility; a purely additive field consumed
+the way its siblings are, landed through the normal contract-first workflow;
+styling, copy, fixtures, tests.
+
 When a task that should have triggered didn't (or noise-triggers too often), amend
 this list — the threshold is versioned here, not vibes. Retro-flags from the user
 are the calibration signal.
@@ -64,3 +73,7 @@ default**, and record each considered-and-deferred axis in DECISIONS.md as
 `- Deferred: <axis> — revisit when <trigger> (<date>)`. Deliberate narrowness is
 recorded option-pricing, not neglect: the trigger clause is what lets the deferral
 resurface when its future arrives.
+
+Routing: the **coordinator** records deferrals. Implementing subagents never write
+`.clyde/` — they report considered-and-deferred axes as data in their final
+report, and the coordinator writes the ledger lines.

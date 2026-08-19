@@ -1,6 +1,6 @@
 # Clyde
 
-Clyde = Claude + IDE: a conversation-centric local app for agent-driven builds. **Read SCOPE.md first — it is the north star.** The `.clyde/` directory holds live project state (tasks, decisions, panels, session logs) and is committed.
+Clyde = Claude + IDE: a conversation-centric local app for agent-driven builds. **Read SCOPE.md first — it is the north star.** The `.clyde/` directory holds live project state (tasks, decisions, the engineering constitution `ENGINEERING.md`, panels, session logs) and is committed.
 
 ## Layout
 
@@ -42,9 +42,11 @@ parallel in-tree agents collide on hotspot files (`App.tsx`, `Sidebars.tsx`,
   recipe: symlink the main tree's entries but point `node_modules/@clyde/*` at
   the worktree's own `packages/*` (otherwise typecheck resolves stale types).
 - **Brief contract**: dispatch description = the exact task subject (links the
-  Tasks-panel badge); ground rules every time — no `.clyde/` writes, no dev
+  Tasks-panel badge); ground rules every time — read `.clyde/ENGINEERING.md`
+  first (the constitution; binding at the critic gate), no `.clyde/` writes
+  (posture deferrals are reported as data — the coordinator records them), no dev
   ports, typecheck must pass, commit on the worktree branch, report branch/sha/
-  decisions/risks as data.
+  decisions/deferred-axes/risks as data.
 - **Merge train**: never merge while another agent runs. Merge agent branches
   one at a time in a THROWAWAY worktree (`git worktree add /tmp/clyde-merge -b
   merge-train main`) — conflict markers must never touch the watched tree (a
@@ -60,7 +62,8 @@ parallel in-tree agents collide on hotspot files (`App.tsx`, `Sidebars.tsx`,
   (`node qa/screenshot.mjs`), and a live-drive pass (`qa/live-drive.mjs` against
   a scratch project on port 4141) whenever server behavior changed. Substantial
   work additionally faces the read-only `critic` agent type before task-close or
-  a merge lands (brief = goal + criteria + diff + evidence; it hunts reasons NOT
-  to accept); surface its verdict via a request_review exhibit with the taskId.
+  a merge lands (brief = goal + criteria + constitution + diff + evidence; it
+  hunts reasons NOT to accept, and an `ENGINEERING.md` violation is citable
+  grounds); surface its verdict via a request_review exhibit with the taskId.
 - **Clean up**: `git worktree remove` agent + merge worktrees, delete merged
   branches. `.claude/worktrees/` is gitignored.
