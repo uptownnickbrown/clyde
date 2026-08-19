@@ -1,0 +1,113 @@
+<!doctype html>
+<!-- QA fixture for the `html` panel kind (#33): the sort of thing the model authors
+     itself when it wants a training run judged — a self-contained page, no build step,
+     no charting DSL. The plot is drawn by the page's own JS, so a screenshot that
+     shows curves is also proof that sandbox="allow-scripts" really executes. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Training run — loss curves</title>
+    <style>
+      :root {
+        --bg: #12151b;
+        --text: #d8dce4;
+        --dim: #8d95a3;
+        --faint: #5c6472;
+        --grid: #262c37;
+        --train: #3987e5;
+        --val: #d95926;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 12px 14px 10px; background: var(--bg); color: var(--text);
+        font: 13px/1.5 ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+      }
+      .meta { color: var(--dim); font-size: 11.5px; margin-bottom: 8px; }
+      .meta b { color: var(--text); font-weight: 600; }
+      svg { width: 100%; height: auto; display: block; }
+      .grid { stroke: var(--grid); stroke-width: 1; }
+      .axis-text { fill: var(--faint); font-size: 10px; }
+      .series { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+      .label { font-size: 11px; font-weight: 600; }
+      .note { fill: var(--dim); font-size: 10.5px; }
+      .cross { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 3 3; visibility: hidden; }
+      .readout { color: var(--dim); font-size: 11.5px; height: 16px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+      .readout b { color: var(--text); font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="meta">run <b>2026-08-18-a</b> · 30 epochs · lr 3e-4 · batch 64 · early-stop patience 5</div>
+    <svg id="plot" viewBox="0 0 640 300" role="img" aria-label="Training and validation loss by epoch"></svg>
+    <div class="readout" id="readout">hover the plot for per-epoch values</div>
+
+    <script>
+      // Deterministic run data — a fixture is only useful if it captures identically.
+      const train = [2.31, 1.72, 1.34, 1.11, 0.96, 0.85, 0.77, 0.70, 0.64, 0.59,
+                     0.55, 0.51, 0.47, 0.44, 0.41, 0.38, 0.36, 0.34, 0.32, 0.30,
+                     0.28, 0.27, 0.25, 0.24, 0.23, 0.22, 0.21, 0.20, 0.19, 0.19];
+      const val   = [2.28, 1.79, 1.45, 1.24, 1.08, 0.97, 0.88, 0.81, 0.75, 0.70,
+                     0.66, 0.62, 0.59, 0.56, 0.53, 0.51, 0.49, 0.47, 0.46, 0.45,
+                     0.44, 0.43, 0.42, 0.412, 0.415, 0.43, 0.45, 0.48, 0.51, 0.55];
+
+      const W = 640, H = 300, M = { top: 14, right: 54, bottom: 26, left: 40 };
+      const plotW = W - M.left - M.right, plotH = H - M.top - M.bottom;
+      const maxY = 2.4;
+      const x = (i) => M.left + (i / (train.length - 1)) * plotW;
+      const y = (v) => M.top + (1 - v / maxY) * plotH;
+      const svg = document.getElementById('plot');
+      const el = (tag, attrs, text) => {
+        const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+        if (text != null) n.textContent = text;
+        svg.appendChild(n);
+        return n;
+      };
+
+      // Recessive grid + axis ticks — the data carries the ink.
+      for (const v of [0, 0.5, 1.0, 1.5, 2.0]) {
+        el('line', { class: 'grid', x1: M.left, x2: M.left + plotW, y1: y(v), y2: y(v) });
+        el('text', { class: 'axis-text', x: M.left - 7, y: y(v) + 3.5, 'text-anchor': 'end' }, v.toFixed(1));
+      }
+      for (const e of [0, 5, 10, 15, 20, 25, 29]) {
+        el('text', { class: 'axis-text', x: x(e), y: H - 8, 'text-anchor': 'middle' }, e + 1);
+      }
+      el('text', { class: 'axis-text', x: M.left - 32, y: M.top + 4, 'text-anchor': 'start' }, 'loss');
+
+      const path = (vals) => vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+      el('polyline', { class: 'series', points: path(train), stroke: 'var(--train)' });
+      el('polyline', { class: 'series', points: path(val), stroke: 'var(--val)' });
+
+      // Direct labels beat a legend box at two series.
+      el('text', { class: 'label', x: x(29) + 8, y: y(train[29]) + 4, fill: 'var(--train)' }, 'train');
+      el('text', { class: 'label', x: x(29) + 8, y: y(val[29]) + 4, fill: 'var(--val)' }, 'val');
+
+      // The one annotation that carries the judgment: where validation bottomed out.
+      const best = val.indexOf(Math.min(...val));
+      el('circle', { cx: x(best), cy: y(val[best]), r: 3.5, fill: 'var(--val)', stroke: 'var(--bg)', 'stroke-width': 2 });
+      const note = el(
+        'text',
+        { class: 'note', id: 'min-val-label', x: x(best), y: y(val[best]) - 12, 'text-anchor': 'middle' },
+        `min val ${val[best].toFixed(3)} @ epoch ${best + 1} — overfits after`,
+      );
+      note.setAttribute('x', Math.min(x(best), M.left + plotW - 70));
+
+      // Hover crosshair: an authored page is allowed to be interactive — that is the
+      // whole point of the kind.
+      const cross = el('line', { class: 'cross', y1: M.top, y2: M.top + plotH });
+      const readout = document.getElementById('readout');
+      svg.addEventListener('mousemove', (ev) => {
+        const box = svg.getBoundingClientRect();
+        const px = ((ev.clientX - box.left) / box.width) * W;
+        const i = Math.max(0, Math.min(train.length - 1, Math.round(((px - M.left) / plotW) * (train.length - 1))));
+        cross.setAttribute('x1', x(i));
+        cross.setAttribute('x2', x(i));
+        cross.style.visibility = 'visible';
+        readout.innerHTML = `epoch <b>${i + 1}</b> · train <b>${train[i].toFixed(3)}</b> · val <b>${val[i].toFixed(3)}</b>`;
+      });
+      svg.addEventListener('mouseleave', () => {
+        cross.style.visibility = 'hidden';
+        readout.textContent = 'hover the plot for per-epoch values';
+      });
+    </script>
+  </body>
+</html>

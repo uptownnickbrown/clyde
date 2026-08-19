@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ClientMessage, CommitInfo, PanelSpec, SessionEvent, TaskItem } from '@clyde/shared';
 import { Md } from './Md';
 import { FileMarkdown, PanelBody } from './PanelContent';
@@ -13,10 +13,13 @@ export function TasksPanel({
   tasks,
   delegated,
   send,
+  onShowCommit,
 }: {
   tasks: TaskItem[];
   delegated?: Set<string>;
   send: (msg: ClientMessage) => void;
+  /** Jump to a task's closing commit in the Git timeline (App owns the rail state). */
+  onShowCommit?: (sha: string) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
@@ -34,6 +37,7 @@ export function TasksPanel({
       onToggle={() => setOpenId(openId === t.id ? null : t.id)}
       delegated={delegated?.has(t.subject) ?? false}
       send={send}
+      onShowCommit={onShowCommit}
     />
   );
 
@@ -75,12 +79,14 @@ function TaskRow({
   onToggle,
   delegated,
   send,
+  onShowCommit,
 }: {
   t: TaskItem;
   open: boolean;
   onToggle: () => void;
   delegated: boolean;
   send: (msg: ClientMessage) => void;
+  onShowCommit?: (sha: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [subject, setSubject] = useState('');
@@ -126,6 +132,20 @@ function TaskRow({
             <div className="task-meta">
               #{t.id} · {t.status.replace('_', ' ')}
               {t.source && ` · from ${t.source.review} item ${t.source.item}`}
+              {/* Provenance edge task → closing commit (#33): the chip is a real jump
+                  into the Git timeline, opened on that commit's diff. */}
+              {t.commit && onShowCommit && (
+                <button
+                  className="task-commit"
+                  title={`Show ${t.commit} in the Git timeline`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onShowCommit(t.commit!);
+                  }}
+                >
+                  commit {t.commit.slice(0, 7)}
+                </button>
+              )}
               <button
                 className="linklike task-edit-btn"
                 onClick={(e) => {
@@ -319,14 +339,28 @@ function relTime(ts: string): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-export function GitPanel({ commits }: { commits: CommitInfo[] }) {
+export function GitPanel({ commits, focusSha }: { commits: CommitInfo[]; focusSha?: string | null }) {
   const [openSha, setOpenSha] = useState<string | null>(null);
+  // A task's commit chip jumps here (#33). Shas travel abbreviated, so match either
+  // direction; an unmatched sha (older than the loaded window) simply opens nothing.
+  // Honored once per jump — a commit landing later must not re-open what the user closed.
+  const jumped = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusSha || jumped.current === focusSha) return;
+    const hit = commits.find((c) => c.sha.startsWith(focusSha) || focusSha.startsWith(c.sha));
+    if (!hit) return;
+    jumped.current = focusSha;
+    setOpenSha(hit.sha);
+    requestAnimationFrame(() =>
+      document.getElementById(`commit-${hit.sha}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }),
+    );
+  }, [focusSha, commits]);
   return (
     <div className="git-panel panel-body">
       {commits.length === 0 && <div className="empty">no commits yet</div>}
       <ul className="commits">
         {commits.map((c) => (
-          <li key={c.sha} onClick={() => setOpenSha(openSha === c.sha ? null : c.sha)}>
+          <li key={c.sha} id={`commit-${c.sha}`} onClick={() => setOpenSha(openSha === c.sha ? null : c.sha)}>
             <div className="commit-line">
               <span className="commit-sha">{c.sha.slice(0, 7)}</span>
               <span className="commit-time">{relTime(c.ts)}</span>
@@ -500,10 +534,13 @@ export function PushedPanels({ panels }: { panels: PanelSpec[] }) {
           Nothing pushed yet — Clyde publishes QA artifacts here via the <code>push_panel</code> tool.
         </div>
       )}
+      {/* Artifacts are ambient reference the user may amend — markdown bodies here
+          carry the edit-in-place flow (an exhibit's markdown stays read-only; see
+          PanelContent). */}
       {panels.map((p) => (
         <section key={p.id} className="panel">
           <h3>{p.title}</h3>
-          <PanelBody content={p} />
+          <PanelBody content={p} editable />
         </section>
       ))}
     </div>

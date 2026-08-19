@@ -83,10 +83,73 @@ export async function startServer(projectRoot: string, port: number, freshSessio
 
   const webDist = findWebDist();
 
+  // Edits to pushed markdown artifacts, debounced into ONE agent note per burst
+  // (same shape as the Tasks panel's [Tasks edited] note) so a save-happy user never
+  // spams the conversation.
+  const fileEdits: string[] = [];
+  let fileEditTimer: NodeJS.Timeout | undefined;
+  const noteFileEdit = (rel: string, summary: string) => {
+    fileEdits.push(`${rel} ${summary}`);
+    clearTimeout(fileEditTimer);
+    fileEditTimer = setTimeout(() => {
+      const edits = fileEdits.splice(0);
+      const one = edits.length === 1;
+      session.enqueue(
+        `[${one ? rel : `${edits.length} files`} edited] The user edited ${edits.join('; ')} in place ` +
+          `from the Artifacts panel. Re-read ${one ? 'it' : 'them'} before acting — the edit is user intent.`,
+      );
+    }, 5000);
+  };
+
+  const projectReal = fs.realpathSync(path.resolve(projectRoot));
+  const clydePrefix = path.join(projectReal, '.clyde') + path.sep;
+  /** Resolve a project-relative path for WRITING: the real path of an existing file
+   *  inside the project root, or null. Traversal, absolute paths and symlinks pointing
+   *  out are all caught by resolving links first and testing containment after. */
+  const resolveWritableFile = (rel: string): string | null => {
+    const abs = path.resolve(projectReal, rel);
+    if (!abs.startsWith(projectReal + path.sep)) return null;
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return null;
+    const real = fs.realpathSync(abs);
+    return real.startsWith(projectReal + path.sep) ? real : null;
+  };
+
   const httpServer = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${port}`);
 
-    // Project-file access for panels (images, markdown, metrics JSON).
+    // Write back a project file the user edited in place (markdown artifacts today).
+    // Confined to the project root, existing files only — this is an edit affordance,
+    // not a file-creation API — and .clyde/ is off limits: that state is the agent's
+    // own ledger, edited through its own affordances (tasks panel, goal panel).
+    if (url.pathname === '/api/project-file' && req.method === 'POST') {
+      const rel = url.searchParams.get('path') ?? '';
+      const abs = resolveWritableFile(rel);
+      if (!abs || abs.startsWith(clydePrefix)) {
+        slog('server', 'warn', 'project-file write refused', { path: rel });
+        res.writeHead(400).end('bad path');
+        return;
+      }
+      const chunks: Buffer[] = [];
+      let size = 0;
+      req.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > 2_000_000) req.destroy();
+        else chunks.push(c);
+      });
+      req.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        const before = fs.readFileSync(abs, 'utf8');
+        fs.writeFileSync(abs, text);
+        const summary = lineDiffSummary(before, text);
+        slog('server', 'info', 'project file saved from a panel', { path: rel, bytes: text.length, summary });
+        noteFileEdit(rel, summary);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, summary }));
+      });
+      return;
+    }
+
+    // Project-file access for panels (images, markdown, metrics JSON, html, tables).
     if (url.pathname === '/api/project-file') {
       const rel = url.searchParams.get('path') ?? '';
       const abs = path.resolve(projectRoot, rel);
