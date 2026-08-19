@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ClientMessage, CommitInfo, PanelSpec, SessionEvent, TaskItem } from '@clyde/shared';
 import { Md } from './Md';
 import { FileMarkdown, PanelBody } from './PanelContent';
@@ -343,10 +343,13 @@ export function GitPanel({ commits, focusSha }: { commits: CommitInfo[]; focusSh
   const [openSha, setOpenSha] = useState<string | null>(null);
   // A task's commit chip jumps here (#33). Shas travel abbreviated, so match either
   // direction; an unmatched sha (older than the loaded window) simply opens nothing.
+  // Honored once per jump — a commit landing later must not re-open what the user closed.
+  const jumped = useRef<string | null>(null);
   useEffect(() => {
-    if (!focusSha) return;
+    if (!focusSha || jumped.current === focusSha) return;
     const hit = commits.find((c) => c.sha.startsWith(focusSha) || focusSha.startsWith(c.sha));
     if (!hit) return;
+    jumped.current = focusSha;
     setOpenSha(hit.sha);
     requestAnimationFrame(() =>
       document.getElementById(`commit-${hit.sha}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }),
