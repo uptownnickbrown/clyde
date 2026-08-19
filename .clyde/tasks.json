@@ -261,7 +261,8 @@
     "source": {
       "review": ".clyde/reviews/2026-08-19-critic-overnight-closeout.md"
     },
-    "batch": "2026-08-19-critic-overnight-closeout"
+    "batch": "2026-08-19-critic-overnight-closeout",
+    "commit": "713429b"
   },
   {
     "id": "38",
