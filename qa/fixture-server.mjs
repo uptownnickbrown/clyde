@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { buildSnapshot, DELTA_TEXT } from './fixture.mjs';
+import { buildSnapshot, DELTA_TEXT, LIVE_EXHIBIT } from './fixture.mjs';
 
 const MIME = {
   '.html': 'text/html',
@@ -105,6 +105,19 @@ export function startFixtureServer(port = 4123) {
       return;
     }
 
+    // QA trigger: push a live blocking exhibit (request_review) to connected
+    // clients — same reason /fixture/ask exists: the workbench auto-flips to it.
+    if (url.pathname === '/fixture/exhibit') {
+      const exhibit = { id: 'ex-live', ts: new Date().toISOString(), type: 'exhibit', turnId: 't5', ...LIVE_EXHIBIT };
+      const status = { id: 'ex-live-status', ts: new Date().toISOString(), type: 'status', status: 'awaiting_input' };
+      for (const ws of sockets) {
+        ws.send(JSON.stringify({ type: 'event', event: exhibit }));
+        ws.send(JSON.stringify({ type: 'event', event: status }));
+      }
+      res.writeHead(200).end('ok');
+      return;
+    }
+
     if (url.pathname === '/api/logs') {
       res.writeHead(200, { 'content-type': 'text/plain' });
       res.end(FIXTURE_LOGS);
@@ -138,7 +151,9 @@ export function startFixtureServer(port = 4123) {
   const sockets = new Set();
   wss.on('connection', (ws) => {
     sockets.add(ws);
-    // Echo answer_question like the real server: answered event + back to working.
+    // Echo the two blocking interactions like the real server: the settling event
+    // plus a return to working. (These echoes are also the behavioral assertions —
+    // the capture only advances if the client really sent the message.)
     ws.on('message', (data) => {
       let msg;
       try {
@@ -146,14 +161,22 @@ export function startFixtureServer(port = 4123) {
       } catch {
         return;
       }
-      if (msg.type !== 'answer_question') return;
-      const answered = {
-        id: 'q-live-a', ts: new Date().toISOString(), type: 'question_answered',
-        questionId: msg.questionId, answers: msg.answers, ...(msg.response ? { response: msg.response } : {}),
-      };
-      const status = { id: 'q-live-w', ts: new Date().toISOString(), type: 'status', status: 'working' };
+      const ts = new Date().toISOString();
+      let settled = null;
+      if (msg.type === 'answer_question') {
+        settled = {
+          id: 'q-live-a', ts, type: 'question_answered',
+          questionId: msg.questionId, answers: msg.answers, ...(msg.response ? { response: msg.response } : {}),
+        };
+      } else if (msg.type === 'exhibit_response') {
+        settled = {
+          id: `ex-live-${msg.verdict}`, ts, type: 'exhibit_settled',
+          exhibitId: msg.exhibitId, verdict: msg.verdict, ...(msg.comment ? { comment: msg.comment } : {}),
+        };
+      } else return;
+      const status = { id: 'live-working', ts, type: 'status', status: 'working' };
       for (const s of sockets) {
-        s.send(JSON.stringify({ type: 'event', event: answered }));
+        s.send(JSON.stringify({ type: 'event', event: settled }));
         s.send(JSON.stringify({ type: 'event', event: status }));
       }
     });

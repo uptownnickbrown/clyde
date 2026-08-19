@@ -218,6 +218,30 @@ try {
   await page.waitForTimeout(300);
   await shot('12d-question-answered');
 
+  // 26a — blocking exhibit: the fixture pushes a live request_review; the workbench
+  // auto-flips to the Exhibits tab, the card shows the evidence itself (a gallery of
+  // the captures taken so far), the task it gates, and Approve / Decline. The
+  // declined-with-comment exhibit sits beneath it as the ruled-on record.
+  await page.evaluate(() => fetch('/fixture/exhibit'));
+  await page.waitForSelector('.exhibit-card');
+  if (!(await page.locator('.wb-tabs button', { hasText: 'Exhibits' }).getAttribute('class'))?.includes('active'))
+    throw new Error('exhibits: a pending exhibit should flip the workbench to the Exhibits tab');
+  await page.waitForTimeout(700); // gallery fetch + images decode
+  await page.locator('.ex-comment').fill('Column measure and chip alignment hold; phone top bar is right.');
+  await shot('26a-exhibit-pending');
+
+  // 26b — rule on it: Approve sends exhibit_response (the fixture server only echoes
+  // exhibit_settled if the client really sent it), and the card collapses to the
+  // compact outcome row with the comment.
+  await page.locator('.exhibit-card .q-actions button.primary').click();
+  await page.waitForSelector('.ex-settled.ex-approved');
+  if (await page.locator('.exhibit-card').count())
+    throw new Error('exhibits: the settled exhibit should collapse out of the pending card');
+  if (await page.locator('.wb-tabs .wb-attn').count())
+    throw new Error('exhibits: the attention badge should clear once nothing is pending');
+  await page.waitForTimeout(200);
+  await shot('26b-exhibit-settled');
+
   // 20 — responsive layout pass (Design Vision §5, task #20). Breakpoints:
   // <1280 medium, <960 narrow (overlay drawers), <680 phone. The checks assert
   // the behavioral rules; the captures show them.
