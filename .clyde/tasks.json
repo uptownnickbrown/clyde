@@ -234,7 +234,7 @@
     "subject": "CSP hardening for /api/project-file responses",
     "status": "completed",
     "commit": "d13c955",
-    "detail": "Follow-up flagged by the #33 renderer agent, DONE (d13c955): GET /api/project-file responses carry Content-Security-Policy: sandbox allow-scripts — a direct navigation to agent-authored HTML gets an opaque origin (no Clyde APIs, no localStorage) while the exhibit iframe's allow-scripts flow is unchanged. Verified: 33x fixture asserts green (frameLocator still executes the plot's script) and the header confirmed live on the running server."
+    "detail": "Follow-up flagged by the #33 renderer agent, DONE (d13c955): GET /api/project-file responses carry Content-Security-Policy: sandbox allow-scripts — a direct navigation to agent-authored HTML gets an opaque origin (no Clyde APIs, no localStorage) while the exhibit iframe's allow-scripts flow is unchanged. Verified: 33x fixture asserts green (frameLocator still executes the plot's script) and the header confirmed live on the running server. CLAIM CORRECTED per critic finding 1 + #36: the CSP sandbox alone never put 'Clyde APIs out of reach' - it blocked same-origin DOM reads only; the socket and simple POSTs stayed reachable from the opaque origin until the #36 origin gate landed. The honest pair: CSP sandbox (no reads) + origin gate (no writes/socket)."
   },
   {
     "id": "35",
@@ -246,12 +246,13 @@
   {
     "id": "36",
     "subject": "Close the opaque-origin holes behind the CSP sandbox (critic finding 1)",
-    "status": "in_progress",
-    "detail": "The #34 CSP sandbox header is real but its recorded claim is false against its own threat model: from the sandboxed opaque origin, agent-authored script can (a) open ws://localhost:<port>/ws - the WebSocketServer (server.ts:263) has no Origin check, and hello hands over the session snapshot = the event log, plus accepts every user-privileged client message (send_message, interrupt, edit_task, exhibit_response); (b) fire non-preflighted simple POSTs: /api/goal (overwrites SCOPE.md AND injects a note into the agent's turn - prompt-injection channel), /api/project-file?path= (overwrites any non-.clyde file incl. packages/server/src/* which tsx watch then EXECUTES), /api/upload. Fix: Origin check on the WS upgrade (allow the UI origin, reject null/absent), Origin guard or custom-header preflight requirement on all state-changing routes; extend qa/fixture-server.mjs to serve the CSP header on /api/project-file so fixture asserts test what the claim decorates; add assertions (offline where possible, live-drive section for the WS rejection). Also correct #34's overstated detail text when this lands.",
+    "status": "completed",
+    "detail": "The #34 CSP sandbox header is real but its recorded claim is false against its own threat model: from the sandboxed opaque origin, agent-authored script can (a) open ws://localhost:<port>/ws - the WebSocketServer (server.ts:263) has no Origin check, and hello hands over the session snapshot = the event log, plus accepts every user-privileged client message (send_message, interrupt, edit_task, exhibit_response); (b) fire non-preflighted simple POSTs: /api/goal (overwrites SCOPE.md AND injects a note into the agent's turn - prompt-injection channel), /api/project-file?path= (overwrites any non-.clyde file incl. packages/server/src/* which tsx watch then EXECUTES), /api/upload. Fix: Origin check on the WS upgrade (allow the UI origin, reject null/absent), Origin guard or custom-header preflight requirement on all state-changing routes; extend qa/fixture-server.mjs to serve the CSP header on /api/project-file so fixture asserts test what the claim decorates; add assertions (offline where possible, live-drive section for the WS rejection). Also correct #34's overstated detail text when this lands. DONE (a4611cb, merge train): pure origin.ts policy (absent Origin allowed - local tools; present-and-unlisted rejected incl. the literal 'null'); HTTP gate keyed on method (POST/PUT/PATCH/DELETE) ahead of every route; verifyClient 403 on the WS upgrade; fixture server now serves the CSP header so the evidence tests the claim; qa:origin 40/40; ephemeral-port wiring probe 9/9. SCOPE HONESTY: this closes the rendered-HTML hole only - absent-Origin local processes (curl, the agent's own shell) remain allowed by design; loopback-only allowlist means LAN access is unsupported.",
     "source": {
       "review": ".clyde/reviews/2026-08-19-critic-overnight-closeout.md"
     },
-    "batch": "2026-08-19-critic-overnight-closeout"
+    "batch": "2026-08-19-critic-overnight-closeout",
+    "commit": "a4611cb"
   },
   {
     "id": "37",
@@ -267,12 +268,13 @@
   {
     "id": "38",
     "subject": "Agents panel: dispatch_update never fires for background dispatches (stuck 'running')",
-    "status": "in_progress",
-    "detail": "Observed 2026-08-19: the critic dispatch (toolUseId toolu_01ML3Ss2Z29S2Tq939mg2THn, 11:47:48) completed in 6m14s but the Agents panel showed it running for 2+ hours. Evidence: events.jsonl has the dispatch event and ZERO dispatch_update events in the whole session, so the #23 rule (running until completion signal) never terminates for background dispatches whose spawn ack lands instantly. Likely cause: the task-notification parser (shared live+backfill per #23) does not match the current harness notification format (<task-notification><task-id>/<status>/<result> XML-ish shape) that background Agent-tool completions arrive in. Fix: update the parser to the current format(s), emit dispatch_update on completion notifications, add a backfill/offline check with a real captured notification as fixture; consider a fallback (mark completed when the coordinator's turn consumes the notification) so unrecognized future formats degrade to correct-eventually instead of running-forever.",
+    "status": "completed",
+    "detail": "Observed 2026-08-19: the critic dispatch (toolUseId toolu_01ML3Ss2Z29S2Tq939mg2THn, 11:47:48) completed in 6m14s but the Agents panel showed it running for 2+ hours. Evidence: events.jsonl has the dispatch event and ZERO dispatch_update events in the whole session, so the #23 rule (running until completion signal) never terminates for background dispatches whose spawn ack lands instantly. Likely cause: the task-notification parser (shared live+backfill per #23) does not match the current harness notification format (<task-notification><task-id>/<status>/<result> XML-ish shape) that background Agent-tool completions arrive in. Fix: update the parser to the current format(s), emit dispatch_update on completion notifications, add a backfill/offline check with a real captured notification as fixture; consider a fallback (mark completed when the coordinator's turn consumes the notification) so unrecognized future formats degrade to correct-eventually instead of running-forever. DONE (d07705a, merge train): root cause was NOT a format change - completions arrive on the live SDK stream as typed system/task_notification messages which translate() never handled; the text form exists only in the CLI transcript (backfill path, which worked). Now both forms share buildDispatchUpdate(); task_started/progress map taskId->toolUseId; report recovered from output_file (16MB cap, error-swallowing); stopped/killed map to failed (widening the union = web change, out of scope); degraded fallback scans bare toolu_ ids so only a no-id notification can ever leave a card running, warn-logged. 16 new backfill checks green; replay of the real incident transcript yields the correct update.",
     "source": {
       "review": ".clyde/reviews/2026-08-19-critic-overnight-closeout.md"
     },
-    "batch": "2026-08-19-critic-overnight-closeout"
+    "batch": "2026-08-19-critic-overnight-closeout",
+    "commit": "d07705a"
   },
   {
     "id": "39",
