@@ -306,14 +306,15 @@
   {
     "id": "42",
     "subject": "ENGINEERING.md: seed the engineering constitution + significance triggers",
-    "status": "in_progress",
+    "status": "completed",
+    "commit": "7a4c82a",
     "detail": "Create .clyde/ENGINEERING.md — ~10 opinionated principles seeded from the proto-constitution entries already in DECISIONS.md (untrusted agent-writable files, structured-over-convention, lifecycle test, files-are-the-database) plus the craft canon (policy out of transport, duplication beats wrong abstraction, tests assert behavior, intentional contracts, one-way dependencies). Plus the ARCHITECTURAL SIGNIFICANCE trigger list (new/changed public contract, new module boundary, new dependency direction, schema/persistence change, cross-package change) — the ONE judgment that gates posture, maintainer, and drills. Binding at the critic gate per ruling; retro-flagged misses amend the list. Keep it short — agents skim long constitutions.",
     "batch": "2026-08-19-engineering-assurance"
   },
   {
     "id": "43",
     "subject": "Standing orders: posture ceremony, deferral convention, binding critic",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "agentSession.ts prompt changes (wave 1 is prompting-only): (1) CLYDE_PROTOCOL — Orientation gains ENGINEERING.md; new Change-posture bullet: on significance-trigger hits, name the plausible axes of change, default NARROW with a one-line prose posture note, record deferrals in DECISIONS.md as '- Deferred: <axis> — revisit when <trigger> (<date>)' (trigger clause written NOW so v2 tripwires can arm retroactively), and block with a question card ONLY when buying an extension point would change today's build ('not anticipated' and 'plausible-don't-build' are identical builds — never ask the user to distinguish them). (2) CRITIC_PROMPT — ENGINEERING.md is BINDING: a violation is a citable reason not to accept; remedy for a wrong rule is amending the file. (3) IMPLEMENTER_PROMPT — read and honor the constitution. Server restart on save is survivable (resume + backfill). Gate: typecheck + critic pass; no UI change so no fixture run.",
     "batch": "2026-08-19-engineering-assurance"
   }
