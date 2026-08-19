@@ -114,6 +114,21 @@ If the human doesn't read the code, **verification becomes the new code review**
 3. Compaction observability: what exactly the SDK exposes at a compact boundary.
 4. Todo event mirroring.
 
+## Following wave — engineering assurance (settled 2026-08-19)
+
+Verification proves the software works *now*. This wave extends the rigor pillar into the **future tense**: evidence that the software stays cheap to change. Same epistemology as everything else here — maintainability evidence must be either *product-denominated* (the cost of future asks: blast radius, files touched, whether contracts survive) or *adversarial process*. Never a composite quality score (Goodhart immediately), never discipline ritual (a TDD-chronology panel proves chronology, not quality).
+
+The spine is **one significance judgment**: a concrete trigger list in `.clyde/ENGINEERING.md` (new/changed public contract, new module boundary, new dependency direction, schema change, cross-package change) gates the entire apparatus. Ordinary tasks pay **zero** ceremony. In build order:
+
+1. **Engineering constitution.** `.clyde/ENGINEERING.md`: ~10 ratified principles plus the significance triggers, inherited by every implementer and critic brief, **binding at the critic gate** — a violation is citable grounds not to accept; the remedy for a wrong rule is amending the file. Seeded from the proto-constitution rulings already in DECISIONS.md; future entries graduate the same way.
+2. **Change posture.** For trigger-crossing work the agent names the plausible axes of change and defaults **narrow** with a one-line prose note. A blocking card fires only when buying an extension point would change today's build — "not anticipated" and "plausible, don't build for it" produce identical builds, so the user is never asked to distinguish them. Every deferral is a Decision with a trigger clause ("revisit when a second consumer appears"): deliberate narrowness as recorded option-pricing, not neglect.
+3. **Maintainer agent type** (build after posture is felt live). Advisory two-year-owner review beside the critic, never contesting acceptance — read-only surface, main model, riding the critic gate on posture tasks only. Findings settle on one disposition card: fix-now → Task, defer-with-trigger → Decision, reject-with-reason. Nothing silently dropped.
+4. **Change drills** (the star; build last). Agent-proposed at posture closes: a **cold** agent (no conversation context — comprehension is measured for free, reported separately from hostility) probes every posture axis plus one the implementer never saw, returning accommodating / neutral / hostile with blast radius and a minimal change plan per probe. Posture claims become falsifiable predictions; confirmations log quietly — **only falsified predictions reach the attention surface**. Plan-only tier on the main model; an empirical tier (worktree implementation, code discarded — the report is the artifact) for user-starred axes on the subagent model.
+
+**The drag ledger.** An ordinary task pays nothing. A significant task pays a prose note, a card only when a seam purchase is live, a maintainer pass folded into a gate it already passes, and a drill only on an accepted offer. The attention surface interrupts for exactly two things: *spend money now?* and *a prediction failed.*
+
+**V2, deferred knowingly:** server-side deferral tripwires (match recorded trigger clauses against incoming tasks, inject an "armed deferral may apply" note — clauses are written from day one, so v2 arms the existing backlog retroactively); calibration of drill predictions against real-diff blast radius from git history; an on-demand quality lens over posture claims, findings, and deferred debt — a lens over existing nouns, per the lifecycle test, and only after the flow is felt.
+
 ## Success criteria
 
 1. **The dogfood test (primary):** Clyde v1 is built *by* Clyde as early as possible — bootstrap with Claude Code until the walking skeleton runs, then switch. Every subsequent Clyde feature is implemented through the Clyde UI.

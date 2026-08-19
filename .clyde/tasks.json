@@ -294,5 +294,26 @@
     "source": {
       "review": ".clyde/uploads/2026-08-19T14-00-12-Screenshot_2026-08-19_at_10.00.09_AM.png"
     }
+  },
+  {
+    "id": "41",
+    "subject": "Engineering-assurance wave: SCOPE section + design-session rulings",
+    "status": "in_progress",
+    "detail": "From the 2026-08-19 grilling session (12 forks settled, 11 on recommendation, 1 deviation): add the engineering-assurance wave to SCOPE.md — the third question ('did we build it so the future stays cheap?') as the rigor pillar extended into the future tense; mechanisms in build order (constitution → posture ceremony → maintainer agent → change drills) with cut lines (tripwires/calibration/quality-lens = v2); the drag ledger principle (ordinary tasks pay ZERO ceremony; the attention surface interrupts only for 'spend money now?' and 'a prediction failed'). Append the settled rulings to DECISIONS.md.",
+    "batch": "2026-08-19-engineering-assurance"
+  },
+  {
+    "id": "42",
+    "subject": "ENGINEERING.md: seed the engineering constitution + significance triggers",
+    "status": "pending",
+    "detail": "Create .clyde/ENGINEERING.md — ~10 opinionated principles seeded from the proto-constitution entries already in DECISIONS.md (untrusted agent-writable files, structured-over-convention, lifecycle test, files-are-the-database) plus the craft canon (policy out of transport, duplication beats wrong abstraction, tests assert behavior, intentional contracts, one-way dependencies). Plus the ARCHITECTURAL SIGNIFICANCE trigger list (new/changed public contract, new module boundary, new dependency direction, schema/persistence change, cross-package change) — the ONE judgment that gates posture, maintainer, and drills. Binding at the critic gate per ruling; retro-flagged misses amend the list. Keep it short — agents skim long constitutions.",
+    "batch": "2026-08-19-engineering-assurance"
+  },
+  {
+    "id": "43",
+    "subject": "Standing orders: posture ceremony, deferral convention, binding critic",
+    "status": "pending",
+    "detail": "agentSession.ts prompt changes (wave 1 is prompting-only): (1) CLYDE_PROTOCOL — Orientation gains ENGINEERING.md; new Change-posture bullet: on significance-trigger hits, name the plausible axes of change, default NARROW with a one-line prose posture note, record deferrals in DECISIONS.md as '- Deferred: <axis> — revisit when <trigger> (<date>)' (trigger clause written NOW so v2 tripwires can arm retroactively), and block with a question card ONLY when buying an extension point would change today's build ('not anticipated' and 'plausible-don't-build' are identical builds — never ask the user to distinguish them). (2) CRITIC_PROMPT — ENGINEERING.md is BINDING: a violation is a citable reason not to accept; remedy for a wrong rule is amending the file. (3) IMPLEMENTER_PROMPT — read and honor the constitution. Server restart on save is survivable (resume + backfill). Gate: typecheck + critic pass; no UI change so no fixture run.",
+    "batch": "2026-08-19-engineering-assurance"
   }
 ]
