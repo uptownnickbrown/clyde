@@ -116,14 +116,14 @@ export function Conversation({
 
   // Shared per-message thread affordances — identical for user and assistant messages.
 
-  /** Hover pill straddling the message's top-right corner: whole-message thread. */
+  /** Icon button in the reserved right gutter: whole-message thread. */
   const threadAffordance = (messageId: string) => (
     <button
       className="thread-pill thread-affordance"
       title="Start a thread"
       onClick={() => setComposing({ messageId, quote: null })}
     >
-      💬 Thread
+      💬
     </button>
   );
 
