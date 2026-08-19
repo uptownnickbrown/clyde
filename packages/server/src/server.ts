@@ -2,11 +2,13 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { ClientMessage, GitStatus, ServerMessage, SessionEvent, Snapshot } from '@clyde/shared';
+import type { ClientMessage, DecisionEdit, GitStatus, ServerMessage, SessionEvent, Snapshot } from '@clyde/shared';
 import { AgentSession, type Broadcast } from './agentSession.js';
+import { applyDecisionEdit } from './decisions.js';
 import { ClydeStore } from './store.js';
 import { listCommits, repoStatus, showCommit } from './git.js';
 import { initLogger, slog, tailLog } from './log.js';
+import { createNoteBuffer } from './notes.js';
 import { ASIDE_MODEL, runAside } from './observer.js';
 import { allowedOrigins, isOriginAllowed, isStateChanging } from './origin.js';
 
@@ -84,23 +86,37 @@ export async function startServer(projectRoot: string, port: number, freshSessio
 
   const webDist = findWebDist();
 
-  // Edits to pushed markdown artifacts, debounced into ONE agent note per burst
-  // (same shape as the Tasks panel's [Tasks edited] note) so a save-happy user never
-  // spams the conversation.
-  const fileEdits: string[] = [];
-  let fileEditTimer: NodeJS.Timeout | undefined;
-  const noteFileEdit = (rel: string, summary: string) => {
-    fileEdits.push(`${rel} ${summary}`);
-    clearTimeout(fileEditTimer);
-    fileEditTimer = setTimeout(() => {
-      const edits = fileEdits.splice(0);
+  // Panel edits reach the agent as ONE debounced note per burst, so a save-happy user
+  // never spams the conversation. Both buffers resolve `session` when they FIRE, not
+  // when they are created — it is a reassignable binding (New session swaps it), and
+  // notes.ts drops a burst whose session went away rather than reporting edits to a
+  // conversation that never saw them.
+  const fileEditNotes = createNoteBuffer(
+    () => session,
+    (edits) => {
+      // The note names the file when the burst touched exactly one, so the common case
+      // reads as a sentence. Recovered by stripping the trailing "+N/-M lines" rather
+      // than splitting on space: a project path may contain one.
       const one = edits.length === 1;
-      session.enqueue(
-        `[${one ? rel : `${edits.length} files`} edited] The user edited ${edits.join('; ')} in place ` +
-          `from the Artifacts panel. Re-read ${one ? 'it' : 'them'} before acting — the edit is user intent.`,
+      const rel = one ? edits[0].replace(/\s+\+\d+\/-\d+ lines$/, '') : `${edits.length} files`;
+      return (
+        `[${rel} edited] The user edited ${edits.join('; ')} in place ` +
+        `from the Artifacts panel. Re-read ${one ? 'it' : 'them'} before acting — the edit is user intent.`
       );
-    }, 5000);
-  };
+    },
+  );
+  const noteFileEdit = (rel: string, summary: string) => fileEditNotes.push(`${rel} ${summary}`);
+
+  // Decision-ledger edits get their own buffer, not a fold into the one above: the prose
+  // has to say something different — a ruling that changed under the agent's feet is a
+  // re-litigation hazard, not a file it might want to re-read.
+  const decisionNotes = createNoteBuffer(
+    () => session,
+    (edits) =>
+      `[Decisions edited] The user edited the decision ledger directly: ${edits.join('; ')}. ` +
+      `Re-read .clyde/DECISIONS.md before relying on a recorded ruling — an edited or removed ` +
+      `decision must not be re-litigated from memory.`,
+  );
 
   const projectReal = fs.realpathSync(path.resolve(projectRoot));
   const clydePrefix = path.join(projectReal, '.clyde') + path.sep;
@@ -139,7 +155,8 @@ export async function startServer(projectRoot: string, port: number, freshSessio
     // Write back a project file the user edited in place (markdown artifacts today).
     // Confined to the project root, existing files only — this is an edit affordance,
     // not a file-creation API — and .clyde/ is off limits: that state is the agent's
-    // own ledger, edited through its own affordances (tasks panel, goal panel).
+    // own ledger, edited through its own affordances (tasks panel, goal panel,
+    // decisions panel — see /api/decisions below).
     if (url.pathname === '/api/project-file' && req.method === 'POST') {
       const rel = url.searchParams.get('path') ?? '';
       const abs = resolveWritableFile(rel);
@@ -235,6 +252,56 @@ export async function startServer(projectRoot: string, port: number, freshSessio
         );
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
+      });
+      return;
+    }
+
+    // Ruling edits from the Decisions panel (#40): rewrite or remove ONE line of
+    // .clyde/DECISIONS.md, broadcast the file as written, and hand the agent a debounced
+    // note. Unlike /api/goal this is NOT a whole-file replace — the agent appends to this
+    // file while the user is reading it, so the payload names a single ruling by its exact
+    // text and the file is re-read here, at write time. See decisions.ts for the policy;
+    // deletion is real deletion (git is the history, the ledger is the present).
+    if (url.pathname === '/api/decisions' && req.method === 'POST') {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      req.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > 200_000) req.destroy();
+        else chunks.push(c);
+      });
+      req.on('end', () => {
+        const fail = (status: number, reason: string) => {
+          slog('server', 'warn', 'decision edit refused', { status, reason });
+          res.writeHead(status, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: reason }));
+        };
+        let edit: DecisionEdit;
+        try {
+          edit = JSON.parse(Buffer.concat(chunks).toString('utf8')) as DecisionEdit;
+        } catch {
+          return fail(400, 'malformed request body');
+        }
+        if (!edit || typeof edit !== 'object') return fail(400, 'malformed request body');
+        const file = path.join(projectRoot, '.clyde', 'DECISIONS.md');
+        let before: string;
+        try {
+          before = fs.readFileSync(file, 'utf8');
+        } catch {
+          return fail(409, 'no decision ledger yet (.clyde/DECISIONS.md)');
+        }
+        const outcome = applyDecisionEdit(before, edit);
+        if (!outcome.ok) return fail(outcome.status, outcome.reason);
+        if (outcome.changed) {
+          fs.writeFileSync(file, outcome.markdown);
+          slog('server', 'info', 'decision ledger edited from the panel', { summary: outcome.summary });
+          decisionNotes.push(outcome.summary);
+        }
+        broadcastAll({ type: 'decisions', markdown: outcome.markdown });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        // The ledger rides back on the response as well as the broadcast: the panel that
+        // saved must show the truth even when its socket is down (the POST still applied).
+        res.end(JSON.stringify({ ok: true, changed: outcome.changed, markdown: outcome.markdown }));
       });
       return;
     }

@@ -56,7 +56,7 @@ Hit **☰ Review** in the composer and dump everything — every nitpick from a 
 
 ## Resolved arguments become decisions
 
-When a discussion settles, the ruling is distilled into `.clyde/DECISIONS.md` — and the **Decisions** panel renders the ledger as cards. The argument may compact away; the ruling survives, in the agent's context and on your screen.
+When a discussion settles, the ruling is distilled into `.clyde/DECISIONS.md` — and the **Decisions** panel renders the ledger as cards, settled rulings and deferred axes alike. The argument may compact away; the ruling survives, in the agent's context and on your screen. A ruling you no longer stand behind is editable in place, or deletable outright — git keeps the history, the ledger keeps the present — and either way Clyde is told the ledger changed, so nothing is silently re-litigated from memory.
 
 ![The decision ledger as first-class UI](docs/screenshots/decisions.png)
 

@@ -314,6 +314,68 @@ try {
   await page.waitForSelector('.decision-card');
   await shot('10c-decisions-panel');
 
+  // A canned ledger for the edit/delete shots: deterministic (the real file grows every
+  // session) and it carries both ruling kinds, so the deferred card's own accent is in
+  // the capture. In-memory in the fixture — the repo's ledger is not touched.
+  await page.request.post(`http://localhost:${PORT}/fixture/decisions`, {
+    data: [
+      '# Decisions',
+      '',
+      'The distilled rulings from resolved discussions. The argument may compact away; the ruling survives.',
+      '',
+      '- Decided: threading is a presentation layer over one linear conversation, never context forking — because it keeps the model coherent and makes the POC tractable (2026-08-18)',
+      '- Deferred: bulk operations on the ledger (multi-select delete, reorder) — revisit when one wave lands more than ten rulings (2026-08-19)',
+      '- Decided: deleting a ruling from the panel is real deletion, not a strike-through — because git already holds the history and the ledger is the present (2026-08-19)',
+      '',
+    ].join('\n'),
+    headers: { 'content-type': 'text/markdown' },
+  });
+  await rail('Logs'); // remount the panel so it re-reads the ledger
+  await rail('Decisions');
+  await page.waitForSelector('.decision-card.deferred');
+  await shot('10c1-decisions-both-kinds');
+
+  // 10c2 — a ruling open for edit: the card flips to the raw one-line ledger form (#40),
+  // and the save is a REAL round-trip. The fixture serves POST /api/decisions through the
+  // same policy module the server route uses, so this exercises payload → refusal rules →
+  // response → the `decisions` broadcast that re-renders the panel. What the ledger rules
+  // themselves are is asserted offline (qa/decisions-check.mjs).
+  await page.locator('.decision-card').first().locator('.decision-btn').first().click();
+  await page.waitForSelector('.decision-edit textarea');
+  await shot('10c2-decision-edit');
+
+  const EDITED = '- Decided: deleting a ruling from the panel is real deletion, not a strike-through — because git already holds the history and the ledger is the present, and the agent is told the ledger changed (2026-08-19)';
+  await page.locator('.decision-edit textarea').fill(EDITED);
+  await page.locator('.decision-edit-row button', { hasText: 'Save' }).click();
+  // The card is back in read mode carrying the saved text: proof the POST applied and the
+  // panel re-rendered from the ledger the server returned, not from its own draft.
+  await page.waitForSelector('.decision-edit textarea', { state: 'detached' });
+  await page.locator('.decision-card').first().getByText('and the agent is told the ledger changed').waitFor();
+  await shot('10c2b-decision-edit-saved');
+  const savedWrite = await (await fetch(`http://localhost:${PORT}/fixture/file-writes`)).json();
+  const ledgerWrite = savedWrite.filter((w) => w.path === '.clyde/DECISIONS.md').pop();
+  if (!ledgerWrite || !ledgerWrite.text.includes(EDITED)) {
+    throw new Error('decision edit did not reach the ledger through POST /api/decisions');
+  }
+
+  // 10c3 — delete armed: an inline confirm on the card, same pattern as New session
+  await page.locator('.decision-card').first().locator('.decision-btn').nth(1).click();
+  await page.waitForSelector('.decision-confirm');
+  await shot('10c3-decision-delete-confirm');
+
+  // 10c4 — and it really deletes: the ruling leaves the ledger and the count decrements.
+  const rulingsBefore = Number((await page.locator('.panel-meta').innerText()).match(/^(\d+)/)[1]);
+  await page.locator('.decision-confirm .linklike', { hasText: 'Delete' }).click();
+  await page.waitForFunction(
+    (n) => document.querySelector('.decisions-panel .panel-meta')?.textContent?.startsWith(`${n} ruling`),
+    rulingsBefore - 1,
+  );
+  await shot('10c4-decision-deleted');
+  const afterDelete = await (await fetch(`http://localhost:${PORT}/fixture/file-writes`)).json();
+  const deletedLedger = afterDelete.filter((w) => w.path === '.clyde/DECISIONS.md').pop().text;
+  if (deletedLedger.includes(EDITED)) throw new Error('deleted ruling is still in the ledger');
+  if (!deletedLedger.startsWith('# Decisions')) throw new Error('delete damaged the ledger preamble');
+
   // 11 — logs panel
   await rail('Logs');
   await page.waitForTimeout(400);
