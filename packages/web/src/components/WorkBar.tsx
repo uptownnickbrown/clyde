@@ -8,11 +8,14 @@ export function WorkBar({
   since,
   tasks,
   events,
+  pendingExhibits = 0,
 }: {
   status: string;
   since: string | null;
   tasks: TaskItem[];
   events: SessionEvent[];
+  /** Blocking exhibits awaiting a verdict — the other thing 'awaiting_input' means. */
+  pendingExhibits?: number;
 }) {
   const [, tick] = useState(0);
   useEffect(() => {
@@ -41,7 +44,9 @@ export function WorkBar({
     return (
       <div className="workbar awaiting">
         <span className="workbar-dot" />
-        waiting on you — Clyde asked a question in the workbench
+        {pendingExhibits > 0
+          ? 'waiting on you — Clyde needs a verdict on evidence in the workbench'
+          : 'waiting on you — Clyde asked a question in the workbench'}
       </div>
     );
   }

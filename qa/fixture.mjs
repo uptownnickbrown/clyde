@@ -40,6 +40,17 @@ const A4 = `Captured the screenshot set across the main states — pushing them 
 export const DELTA_TEXT =
   'Now judging the screenshots against the bar: checking the conversation column measure, chip alignment, thread indentation, and every empty state…';
 
+/** The blocking exhibit screenshot QA pushes live (like /fixture/ask) so earlier
+ *  captures are not disturbed by the workbench auto-flipping to it. */
+export const LIVE_EXHIBIT = {
+  exhibitId: 'exlive1',
+  title: 'Responsive pass — every state at four widths',
+  content: { kind: 'image-gallery', glob: 'qa/screenshots/*.png' },
+  taskId: '3',
+  detail:
+    'Judge the bar before I close the task: column measure, chip alignment, the drawer scrim, and the condensed phone top bar. Decline with what falls short and I will fix exactly that.',
+};
+
 export function buildSnapshot(projectRoot) {
   let goalMarkdown = null;
   try {
@@ -106,6 +117,18 @@ export function buildSnapshot(projectRoot) {
       }],
     },
     { id: 'q1a', ts: T(11), type: 'question_answered', questionId: 'qfix1', answers: { 'Which QA bar should the screenshot gallery target?': 'Structurally faithful' } },
+    // Blocking exhibit, already ruled on: the agent pushed evidence with
+    // request_review, the turn stopped, and the user declined with a fix list —
+    // that verdict went back as the tool result.
+    {
+      id: 'ex1', ts: T(12), type: 'exhibit', exhibitId: 'exfix1', turnId: 't3',
+      title: 'Gallery density — first pass', content: { kind: 'metrics', path: 'qa/fixtures/metrics.json' },
+      taskId: '3', detail: 'Tile size, gutter, and how many captures land above the fold.',
+    },
+    {
+      id: 'ex1s', ts: T(13), type: 'exhibit_settled', exhibitId: 'exfix1', verdict: 'declined',
+      comment: 'Too much chrome per tile — drop the filename captions, tighten the gutter to 6px, then push a fresh review.',
+    },
     { id: 'e-use1', ts: T(12), type: 'usage', contextTokens: 214000 },
     // Message-level thread (no span) anchored on the USER's own message u2
     { id: 'u-th3', ts: T(12), type: 'user_message', threadId: 'th3', text: 'Threading off my own message: the reference design I attached also has a dark-mode variant — is that in scope for the gallery?' },
@@ -160,6 +183,21 @@ export function buildSnapshot(projectRoot) {
     panels: [
       { id: 'qa-screenshots', kind: 'image-gallery', title: 'QA screenshots', glob: 'qa/screenshots/*.png' },
       { id: 'build-health', kind: 'metrics', title: 'Build health', path: 'qa/fixtures/metrics.json' },
+    ],
+    // Exhibit state as the real server computes it: status comes from the live
+    // resolvers, so a reload still shows what is pending and what was ruled on.
+    exhibits: [
+      {
+        id: 'exfix1',
+        title: 'Gallery density — first pass',
+        content: { kind: 'metrics', path: 'qa/fixtures/metrics.json' },
+        taskId: '3',
+        detail: 'Tile size, gutter, and how many captures land above the fold.',
+        ts: T(12),
+        status: 'declined',
+        comment: 'Too much chrome per tile — drop the filename captions, tighten the gutter to 6px, then push a fresh review.',
+        settledTs: T(13),
+      },
     ],
     tasks: [
       { id: '1', subject: 'Wire protocol + event log', status: 'completed' },

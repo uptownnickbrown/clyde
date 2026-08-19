@@ -3,6 +3,9 @@ import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod';
 import type {
   AgentStatus,
+  Exhibit,
+  ExhibitVerdict,
+  PanelContent,
   PanelSpec,
   Question,
   QuestionAnswers,
@@ -55,6 +58,14 @@ project state lives in on-screen panels. Follow these standing orders:
 - **QA panels**: when you produce visual QA artifacts (screenshots, plots, reports,
   metrics), publish them to the UI with the push_panel tool so the user can judge
   them without digging through files.
+- **Exhibits**: when a task's evidence needs human judgment — QA screenshots, metrics,
+  data tables, an ad hoc HTML artifact — call request_review with that evidence, the
+  taskId, and what you want judged, then WAIT: the tool blocks until the user rules.
+  The verdict IS the acceptance gate — approved means the task can close; declined
+  comes with a comment, so fix exactly that and push a fresh review. Never mark work
+  accepted on your own say-so, and never narrate evidence you could show: put the
+  thing in front of the user and let them judge. push_panel is for reference artifacts
+  nobody has to rule on; request_review is for anything gating acceptance.
 - **Reviews**: batch feedback runs the intake ceremony. Messages tagged
   [Review intake] arrive with the full script — follow it exactly (distill to
   numbered items → echo them → clarify ambiguities in one AskUserQuestion →
@@ -124,6 +135,10 @@ export class AgentSession {
   private pendingTaskCreates = new Map<string, string>();
   /** Blocking AskUserQuestion calls awaiting a user answer, keyed by question id. */
   private pendingQuestions = new Map<string, { questions: Question[]; resolve: (r: unknown) => void }>();
+  /** Blocking request_review calls awaiting a verdict, keyed by exhibit id. Live
+   *  resolvers are the ONLY thing that makes an exhibit pending — they die with the
+   *  process, which is exactly why a restart leaves the card 'expired'. */
+  private pendingExhibits = new Map<string, { resolve: (r: ExhibitDecision) => void }>();
   private tasksWatcher: fs.FSWatcher | null = null;
   private tasksWatchTimer: ReturnType<typeof setTimeout> | undefined;
   /** Panel edits awaiting the debounced [Tasks edited] note (human-readable, in order). */
@@ -193,8 +208,47 @@ export class AgentSession {
               ),
           },
           async (args) => {
-            this.upsertPanel(args as { id: string; kind: PanelSpec['kind']; title: string; source: string });
+            this.upsertPanel(args as { id: string; kind: PanelContent['kind']; title: string; source: string });
             return { content: [{ type: 'text' as const, text: `Panel "${args.title}" published.` }] };
+          },
+        ),
+        tool(
+          'request_review',
+          'Put evidence in front of the user and BLOCK until they approve or decline it. Use this when a piece of work needs human judgment before it counts as done — QA screenshots, metrics, a data table, an ad hoc HTML artifact. The card renders on the workbench attention surface; this call does not return until the user rules, and the verdict (with their comment) comes back as the result. push_panel is the non-blocking sibling for reference artifacts nobody has to judge.',
+          {
+            title: z.string().describe('What the user is being asked to judge, e.g. "Responsive pass — 4 viewports"'),
+            content: z
+              .object({
+                kind: z.enum(['image-gallery', 'markdown', 'metrics', 'iframe']),
+                source: z
+                  .string()
+                  .describe(
+                    'image-gallery: a glob relative to the project root (e.g. "qa/screenshots/*.png"). markdown/metrics: a file path. iframe: a URL.',
+                  ),
+              })
+              .describe('The evidence itself — same content vocabulary as push_panel'),
+            taskId: z
+              .string()
+              .optional()
+              .describe('The task this evidence gates, if any — the card links it and the verdict is its acceptance gate'),
+            detail: z.string().optional().describe('What specifically you want judged, in a sentence or two'),
+          },
+          async (args) => {
+            const decision = await this.requestReview({
+              title: args.title,
+              content: panelContentOf(args.content.kind, args.content.source),
+              taskId: args.taskId,
+              detail: args.detail,
+            });
+            // Structured so the agent branches on the outcome, not on prose.
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ verdict: decision.verdict, comment: decision.comment ?? '' }),
+                },
+              ],
+            };
           },
         ),
         tool(
@@ -483,6 +537,7 @@ export class AgentSession {
     this.tasksWatcher?.close();
     clearTimeout(this.taskEditTimer);
     this.pendingQuestions.clear();
+    this.pendingExhibits.clear();
     this.abort.abort();
   }
 
@@ -670,6 +725,84 @@ export class AgentSession {
     });
   }
 
+  // ---------- exhibits (blocking evidence via the request_review tool) ----------
+
+  /** The blocking half of request_review: log the exhibit, hold the turn open, and
+   *  wait — with no timeout, exactly like the question hold. Verification is the
+   *  point; a review that times out into an assumed pass would be worse than none. */
+  private requestReview(req: { title: string; content: PanelContent; taskId?: string; detail?: string }): Promise<ExhibitDecision> {
+    const exhibitId = crypto.randomUUID();
+    slog('session', 'info', 'exhibit pushed — turn blocked on a verdict', {
+      exhibitId: exhibitId.slice(0, 8),
+      kind: req.content.kind,
+      taskId: req.taskId,
+    });
+    this.emit({
+      type: 'exhibit',
+      exhibitId,
+      title: req.title,
+      content: req.content,
+      ...(req.taskId ? { taskId: req.taskId } : {}),
+      ...(req.detail ? { detail: req.detail } : {}),
+      turnId: this.currentDelivery?.turnId ?? 'unattributed',
+    });
+    this.setStatus('awaiting_input');
+    return new Promise<ExhibitDecision>((resolve) => {
+      this.pendingExhibits.set(exhibitId, { resolve });
+    });
+  }
+
+  /** The user ruled from the workbench (WS exhibit_response). The verdict returns to
+   *  the agent as the tool result — nothing is injected into the conversation or the
+   *  queue; exhibit_settled is the record. */
+  respondToExhibit(exhibitId: string, verdict: ExhibitVerdict, comment?: string) {
+    const pending = this.pendingExhibits.get(exhibitId);
+    if (!pending) {
+      slog('session', 'warn', 'verdict for unknown or expired exhibit — ignored', { exhibitId });
+      return;
+    }
+    if (verdict !== 'approved' && verdict !== 'declined') {
+      slog('session', 'warn', 'exhibit_response with an unknown verdict — ignored', { exhibitId, verdict });
+      return;
+    }
+    this.pendingExhibits.delete(exhibitId);
+    const trimmed = comment?.trim();
+    slog('session', 'info', 'exhibit settled', { exhibitId: exhibitId.slice(0, 8), verdict, commented: Boolean(trimmed) });
+    this.emit({ type: 'exhibit_settled', exhibitId, verdict, ...(trimmed ? { comment: trimmed } : {}) });
+    // Back to working only when nothing else still holds the turn (an agent can push
+    // more than one blocking call in a single assistant message).
+    if (!this.pendingExhibits.size && !this.pendingQuestions.size) this.setStatus('working');
+    pending.resolve({ verdict, comment: trimmed });
+  }
+
+  /** Snapshot view: every exhibit in the log, with status from the live resolvers.
+   *  Takes the already-loaded event log so a snapshot never re-reads the file. */
+  exhibitsFrom(events: SessionEvent[]): Exhibit[] {
+    const byId = new Map<string, Exhibit>();
+    for (const e of events) {
+      if (e.type === 'exhibit') {
+        byId.set(e.exhibitId, {
+          id: e.exhibitId,
+          title: e.title,
+          content: e.content,
+          ...(e.taskId ? { taskId: e.taskId } : {}),
+          ...(e.detail ? { detail: e.detail } : {}),
+          ts: e.ts,
+          // Unsettled and unheld = the blocked call died with a restart or an interrupt.
+          status: this.pendingExhibits.has(e.exhibitId) ? 'pending' : 'expired',
+        });
+      } else if (e.type === 'exhibit_settled') {
+        const x = byId.get(e.exhibitId);
+        if (x) {
+          x.status = e.verdict;
+          x.settledTs = e.ts;
+          if (e.comment) x.comment = e.comment;
+        }
+      }
+    }
+    return [...byId.values()];
+  }
+
   // ---------- SDK stream consumption ----------
 
   private async consume() {
@@ -836,6 +969,14 @@ export class AgentSession {
             count: this.pendingQuestions.size,
           });
           this.pendingQuestions.clear();
+        }
+        // Same for exhibits: a blocking review can only outlive its turn if the turn
+        // was interrupted or aborted, and a verdict nobody is waiting for is a lie.
+        if (this.pendingExhibits.size) {
+          slog('session', 'warn', 'turn ended with unsettled exhibit(s) — expiring', {
+            count: this.pendingExhibits.size,
+          });
+          this.pendingExhibits.clear();
         }
         slog('session', 'info', 'turn complete', {
           turnId: turnId.slice(0, 8),
@@ -1020,13 +1161,8 @@ export class AgentSession {
     this.emit({ type: 'tasks_updated', tasks: this.tasks });
   }
 
-  private upsertPanel(args: { id: string; kind: PanelSpec['kind']; title: string; source: string }) {
-    const spec =
-      args.kind === 'image-gallery'
-        ? ({ id: args.id, kind: 'image-gallery', title: args.title, glob: args.source } as PanelSpec)
-        : args.kind === 'iframe'
-          ? ({ id: args.id, kind: 'iframe', title: args.title, url: args.source } as PanelSpec)
-          : ({ id: args.id, kind: args.kind, title: args.title, path: args.source } as PanelSpec);
+  private upsertPanel(args: { id: string; kind: PanelContent['kind']; title: string; source: string }) {
+    const spec: PanelSpec = { id: args.id, title: args.title, ...panelContentOf(args.kind, args.source) };
     this.panels = [...this.panels.filter((p) => p.id !== spec.id), spec];
     this.store.savePanels(this.panels);
     this.emit({ type: 'panels_updated', panels: this.panels });
@@ -1061,6 +1197,25 @@ export class AgentSession {
     const w = this.waiters.shift();
     if (w) w(m);
     else this.pending.push(m);
+  }
+}
+
+/** The user's ruling on one exhibit, as it goes back to the blocked tool call. */
+interface ExhibitDecision {
+  verdict: ExhibitVerdict;
+  comment?: string;
+}
+
+/** The one place the agent-facing (kind, source) pair becomes typed content — shared
+ *  by push_panel and request_review so the two tools can never drift apart. */
+function panelContentOf(kind: PanelContent['kind'], source: string): PanelContent {
+  switch (kind) {
+    case 'image-gallery':
+      return { kind, glob: source };
+    case 'iframe':
+      return { kind, url: source };
+    default:
+      return { kind, path: source };
   }
 }
 

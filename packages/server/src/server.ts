@@ -58,20 +58,26 @@ export async function startServer(projectRoot: string, port: number, freshSessio
   void pollGitStatus();
   setInterval(() => void pollGitStatus(), 5000);
 
-  const buildSnapshot = async (): Promise<Snapshot> => ({
-    projectName: path.basename(projectRoot),
-    goalMarkdown: store.readGoal(),
-    events: store.loadEvents(),
-    threads: session.threads,
-    queue: session.userQueue,
-    panels: session.panels,
-    tasks: session.tasks,
-    commits: await listCommits(projectRoot),
-    status: session.status,
-    gitStatus,
-    model: session.model,
-    effort: session.effort,
-  });
+  const buildSnapshot = async (): Promise<Snapshot> => {
+    const events = store.loadEvents();
+    return {
+      projectName: path.basename(projectRoot),
+      goalMarkdown: store.readGoal(),
+      events,
+      threads: session.threads,
+      queue: session.userQueue,
+      panels: session.panels,
+      // Status comes from the live resolvers, so a reload shows a pending card as
+      // pending — and a card the restart killed as expired, not falsely actionable.
+      exhibits: session.exhibitsFrom(events),
+      tasks: session.tasks,
+      commits: await listCommits(projectRoot),
+      status: session.status,
+      gitStatus,
+      model: session.model,
+      effort: session.effort,
+    };
+  };
 
   const webDist = findWebDist();
 
@@ -213,6 +219,9 @@ export async function startServer(projectRoot: string, port: number, freshSessio
           break;
         case 'answer_question':
           session.answerQuestion(msg.questionId, msg.answers, msg.response);
+          break;
+        case 'exhibit_response':
+          session.respondToExhibit(msg.exhibitId, msg.verdict, msg.comment);
           break;
         case 'withdraw_queued':
           session.withdraw(msg.queuedId);
