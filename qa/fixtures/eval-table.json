@@ -1,0 +1,11 @@
+{
+  "columns": ["checkpoint", "epoch", "val loss", "exact match", "latency p50", "notes"],
+  "rows": [
+    ["baseline-4b", 30, 0.612, "71.4%", "180ms", "shipped reference"],
+    ["run-a-lr3e4", 24, 0.412, "78.9%", "182ms", "best val — early-stopped"],
+    ["run-a-lr3e4", 30, 0.55, "77.1%", "182ms", "overfit tail"],
+    ["run-b-lr1e3", 18, 0.487, "76.2%", "179ms", "diverged after 18"],
+    ["run-c-cosine", 27, 0.428, 78.4, "195ms", "slower decode"],
+    ["run-c-cosine+ema", 27, 0.421, "79.2%", "196ms", "candidate"]
+  ]
+}

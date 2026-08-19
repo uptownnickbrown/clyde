@@ -171,6 +171,74 @@ try {
   await page.waitForTimeout(600); // gallery + metrics fetches
   await shot('06-panels-tab');
 
+  // 33a — the rich content kinds (#33): a model-AUTHORED html plot in its sandboxed
+  // frame and an eval table rendered natively from JSON.
+  await page.locator('.panel', { hasText: 'Training run' }).scrollIntoViewIfNeeded();
+  await page.waitForSelector('.html-frame iframe');
+  await page.waitForSelector('.data-table td');
+  await page.waitForTimeout(700); // the page's own script draws the curves
+  await shot('33a-artifacts-rich');
+
+  // Behavioral assertion: the frame really executes the page's script (sandbox
+  // "allow-scripts") — every mark in that plot is drawn by it, including this label.
+  const minVal = await page.frameLocator('.html-frame iframe').locator('#min-val-label').textContent();
+  if (!minVal?.includes('0.412'))
+    throw new Error(`html panel: the sandboxed iframe must run the file's own script (got: ${minVal})`);
+  const frameSandbox = await page.locator('.html-frame iframe').getAttribute('sandbox');
+  if (frameSandbox !== 'allow-scripts')
+    throw new Error(`html panel: agent-authored html must never get same-origin access (sandbox="${frameSandbox}")`);
+
+  // Behavioral assertion: table cells really render, including a numeric cell the
+  // normalizer coerced to text (the file mixes "78.9%" strings with a bare 78.4).
+  const cells = await page.locator('.data-table td').allTextContents();
+  if (!cells.includes('78.4') || !cells.includes('run-c-cosine+ema'))
+    throw new Error(`table panel: cell text should render verbatim (got ${cells.length} cells)`);
+  if ((await page.locator('.data-table th').count()) !== 6)
+    throw new Error('table panel: all six declared columns should render as headers');
+
+  // 33b — markdown artifact mid-edit: the #12 goal flow generalized to pushed
+  // markdown (artifacts are reference the user may take a pen to; exhibits are not).
+  const notes = page.locator('.panel', { hasText: 'Eval read-out' });
+  await notes.scrollIntoViewIfNeeded();
+  await notes.locator('.md-edit-btn').click();
+  await page.waitForSelector('.md-edit textarea');
+  const PEN = '\n**My call:** re-run the candidate with EMA disabled at inference — 15ms is too much for +0.3pt.\n';
+  await page.locator('.md-edit textarea').fill((await page.locator('.md-edit textarea').inputValue()) + PEN);
+  await shot('33b-markdown-edit');
+
+  // Behavioral assertion: Save really POSTs /api/project-file with the edited body
+  // (the fixture server records writes the way it records client messages), and the
+  // panel re-reads the file so what renders is what was written.
+  await page.locator('.md-edit-actions button.primary').click();
+  await page.waitForSelector('.md-edit', { state: 'detached' });
+  const writes = await page.evaluate(() => fetch('/fixture/file-writes').then((r) => r.json()));
+  const write = writes.find((w) => w.path === 'qa/fixtures/eval-notes.md');
+  if (!write) throw new Error('markdown artifact: Save must POST /api/project-file for the edited path');
+  if (!write.text.includes('**My call:** re-run the candidate'))
+    throw new Error('markdown artifact: the POST body must carry the edited text');
+  if (!(await notes.textContent())?.includes('My call: re-run the candidate'))
+    throw new Error('markdown artifact: the panel should re-read the file after saving');
+  await page.waitForTimeout(200);
+  await shot('33b2-markdown-saved');
+
+  // Behavioral assertion: agent-written files are untrusted input — a table file
+  // that is not a table renders an honest empty state instead of taking the panel
+  // (or, in an exhibit, the surface the agent is blocked on) down with it.
+  const TABLE = 'qa/fixtures/eval-table.json';
+  const good = await page.evaluate(
+    (p) => fetch(`/api/project-file?path=${p}`).then((r) => r.text()),
+    TABLE,
+  );
+  const put = (p, body) => page.evaluate(([q, b]) => fetch(`/api/project-file?path=${q}`, { method: 'POST', body: b }), [p, body]);
+  await put(TABLE, '{"note":"the model wrote prose where a table was expected"}');
+  await rail('Tasks'); // remount the artifact panels against the garbage file
+  await rail('Artifacts');
+  const sweep = page.locator('.panel', { hasText: 'Eval sweep' });
+  await sweep.locator('.empty').waitFor();
+  if ((await page.locator('.data-table').count()) !== 0)
+    throw new Error('table panel: unusable JSON must not render as a table');
+  await put(TABLE, good); // restore for the rest of the run
+
   // 6b — goal panel in edit mode: full-height monospace editor with SCOPE.md
   // loaded, Save/Cancel beneath (Esc cancels)
   await rail('Goal');
@@ -193,6 +261,21 @@ try {
   await page.waitForSelector('.commit-detail pre');
   await shot('09-commit-expanded');
   await page.locator('.commits li').first().click();
+
+  // 33c — task → commit provenance (#33): a closed task carries the sha that closed
+  // it; the chip on the expanded card is a real jump into the Git timeline.
+  await rail('Tasks');
+  await page.locator('.group-toggle').click(); // reveal the completed group
+  await page.locator('.task', { hasText: 'Wire protocol' }).click();
+  await page.waitForSelector('.task-commit');
+  await shot('33c-task-commit-chip');
+
+  await page.locator('.task-commit').click();
+  await page.waitForSelector('#commit-c5fcbbe41d2a .commit-detail pre');
+  if (!(await page.locator('.rail-btn[title="Git timeline"]').getAttribute('class'))?.includes('active'))
+    throw new Error('commit chip: clicking it should switch the left rail to the Git timeline');
+  await page.waitForTimeout(400); // scroll-into-view settles
+  await shot('33d-commit-jump');
 
   // 10 — reviews panel with burn-down
   await rail('Reviews');
@@ -280,6 +363,15 @@ try {
     throw new Error('exhibits: the attention badge should clear once nothing is pending');
   await page.waitForTimeout(200);
   await shot('26b-exhibit-settled');
+
+  // 33e — evidence the model AUTHORED, on the attention surface: an html exhibit
+  // whose page draws its own plot, framed with the ask it wants ruled on.
+  await page.evaluate(() => fetch('/fixture/exhibit-html'));
+  await page.waitForSelector('.exhibit-card .html-frame iframe');
+  await page.waitForTimeout(700); // the plot draws itself
+  await shot('33e-exhibit-html');
+  await page.locator('.exhibit-card .q-actions button.primary').click(); // leave the surface clean
+  await page.waitForFunction(() => document.querySelectorAll('.exhibit-card').length === 0);
 
   // 20 — responsive layout pass (Design Vision §5, task #20). Breakpoints:
   // <1280 medium, <960 narrow (overlay drawers), <680 phone. The checks assert

@@ -344,17 +344,18 @@ button.linklike:disabled { opacity: 0.55; cursor: default; }
 /* Model-authored html: sandboxed frame, resizable by the corner grip (the content
    is arbitrary — a plot, a report, an interactive — so the height is the user's). */
 .html-frame {
-  display: flex; flex-direction: column; height: 320px; min-height: 120px;
+  display: flex; flex-direction: column; height: 280px; min-height: 120px;
   border: 1px solid var(--border); border-radius: 8px; overflow: auto; resize: vertical;
   background: white;
 }
 .html-iframe { flex: 1; width: 100%; border: none; background: white; }
 .html-frame-note {
   display: flex; gap: 10px; justify-content: space-between; align-items: baseline;
-  padding: 3px 8px; font-size: 10.5px; font-family: var(--mono);
+  padding: 3px 8px; font-size: 10.5px; font-family: var(--mono); white-space: nowrap;
   color: var(--text-faint); background: var(--bg-raised); border-top: 1px solid var(--border-soft);
 }
-.html-frame-note .file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.html-frame-note .file-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.html-frame-tag { flex-shrink: 0; }
 
 /* Natively rendered tabular results — same visual language as .metrics, but wide
    tables scroll sideways instead of squeezing the panel. */

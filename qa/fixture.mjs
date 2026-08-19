@@ -51,6 +51,18 @@ export const LIVE_EXHIBIT = {
     'Judge the bar before I close the task: column measure, chip alignment, the drawer scrim, and the condensed phone top bar. Decline with what falls short and I will fix exactly that.',
 };
 
+/** A blocking exhibit whose evidence is a model-AUTHORED html file (#33): the page
+ *  draws its own plot, so the capture doubles as proof that the sandboxed iframe
+ *  really runs scripts. Pushed live, like the other blocking cards. */
+export const LIVE_EXHIBIT_HTML = {
+  exhibitId: 'exlive2',
+  title: 'Run 2026-08-18-a — loss curves before I promote the checkpoint',
+  content: { kind: 'html', path: 'qa/fixtures/loss-curve.html' },
+  taskId: '3',
+  detail:
+    'Validation bottoms out at 0.412 (epoch 24) and climbs after — I would early-stop there rather than run the full 30. Approve to promote that checkpoint; decline with the epoch you want instead.',
+};
+
 // ---------- /btw asides ----------
 // Asides are transient broadcasts, never session events — so the fixture cannot
 // bake them into the snapshot. It answers a live `aside` client message with
@@ -216,6 +228,11 @@ export function buildSnapshot(projectRoot) {
     panels: [
       { id: 'qa-screenshots', kind: 'image-gallery', title: 'QA screenshots', glob: 'qa/screenshots/*.png' },
       { id: 'build-health', kind: 'metrics', title: 'Build health', path: 'qa/fixtures/metrics.json' },
+      // The rich kinds (#33): a model-authored interactive, a data table, and a
+      // markdown doc the user can take a pen to.
+      { id: 'loss-curves', kind: 'html', title: 'Training run — loss curves', path: 'qa/fixtures/loss-curve.html' },
+      { id: 'eval-sweep', kind: 'table', title: 'Eval sweep — 6 checkpoints', path: 'qa/fixtures/eval-table.json' },
+      { id: 'eval-notes', kind: 'markdown', title: 'Eval read-out (your pen welcome)', path: 'qa/fixtures/eval-notes.md' },
     ],
     // Exhibit state as the real server computes it: status comes from the live
     // resolvers, so a reload still shows what is pending and what was ruled on.
@@ -233,7 +250,15 @@ export function buildSnapshot(projectRoot) {
       },
     ],
     tasks: [
-      { id: '1', subject: 'Wire protocol + event log', status: 'completed' },
+      // Provenance edge task → closing commit (#33): the chip jumps to this sha in
+      // the Git timeline, which is why it matches a commit in the list below.
+      {
+        id: '1',
+        subject: 'Wire protocol + event log',
+        status: 'completed',
+        detail: 'Events, threads, anchors and panels as one shared contract; the log is the source of truth.',
+        commit: 'c5fcbbe41d2a',
+      },
       { id: '2', subject: 'Conversation document with span comments', status: 'completed' },
       { id: '3', subject: 'Playwright screenshot QA harness', status: 'in_progress', activeForm: 'Building the QA harness', detail: 'qa/fixture-server.mjs serves the built UI over a canned snapshot; qa/screenshot.mjs captures every state at 1440x900@2x into qa/screenshots/.' },
       { id: '4', subject: 'Context meter: pull-back-in affordance', status: 'pending', detail: 'Files-touched list with a per-file re-read action so stale context can be pulled back in after compaction.' },

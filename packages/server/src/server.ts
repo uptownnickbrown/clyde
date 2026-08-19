@@ -100,15 +100,17 @@ export async function startServer(projectRoot: string, port: number, freshSessio
     }, 5000);
   };
 
-  const projectAbs = path.resolve(projectRoot);
-  const clydePrefix = path.join(projectAbs, '.clyde') + path.sep;
-  /** Resolve a project-relative path for reading/writing, or null if it escapes the
-   *  project root (traversal, absolute path, symlink out) or is not an existing file. */
-  const resolveProjectFile = (rel: string): string | null => {
-    const abs = path.resolve(projectAbs, rel);
-    if (abs !== projectAbs && !abs.startsWith(projectAbs + path.sep)) return null;
+  const projectReal = fs.realpathSync(path.resolve(projectRoot));
+  const clydePrefix = path.join(projectReal, '.clyde') + path.sep;
+  /** Resolve a project-relative path for WRITING: the real path of an existing file
+   *  inside the project root, or null. Traversal, absolute paths and symlinks pointing
+   *  out are all caught by resolving links first and testing containment after. */
+  const resolveWritableFile = (rel: string): string | null => {
+    const abs = path.resolve(projectReal, rel);
+    if (!abs.startsWith(projectReal + path.sep)) return null;
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return null;
-    return fs.realpathSync(abs).startsWith(fs.realpathSync(projectAbs)) ? abs : null;
+    const real = fs.realpathSync(abs);
+    return real.startsWith(projectReal + path.sep) ? real : null;
   };
 
   const httpServer = http.createServer((req, res) => {
@@ -120,7 +122,7 @@ export async function startServer(projectRoot: string, port: number, freshSessio
     // own ledger, edited through its own affordances (tasks panel, goal panel).
     if (url.pathname === '/api/project-file' && req.method === 'POST') {
       const rel = url.searchParams.get('path') ?? '';
-      const abs = resolveProjectFile(rel);
+      const abs = resolveWritableFile(rel);
       if (!abs || abs.startsWith(clydePrefix)) {
         slog('server', 'warn', 'project-file write refused', { path: rel });
         res.writeHead(400).end('bad path');

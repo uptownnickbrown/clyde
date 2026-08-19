@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { asideResult, asideStarted, buildSnapshot, DELTA_TEXT, LIVE_EXHIBIT } from './fixture.mjs';
+import { asideResult, asideStarted, buildSnapshot, DELTA_TEXT, LIVE_EXHIBIT, LIVE_EXHIBIT_HTML } from './fixture.mjs';
 
 const MIME = {
   '.html': 'text/html',
@@ -34,12 +34,41 @@ export function startFixtureServer(port = 4123) {
   // back over /fixture/client-messages (e.g. "/btw armed sends `aside`, not
   // `send_message`").
   const received = [];
+  // Panel edits (#33): the real server writes the file; the fixture records the write
+  // and serves it back from memory, so QA can assert the POST really happened without
+  // dirtying the repo. Same readback pattern as /fixture/client-messages.
+  const fileWrites = [];
+  const overrides = new Map();
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${port}`);
 
+    if (url.pathname === '/api/project-file' && req.method === 'POST') {
+      const rel = url.searchParams.get('path') ?? '';
+      const abs = path.resolve(PROJECT_ROOT, rel);
+      if (!abs.startsWith(PROJECT_ROOT) || rel.startsWith('.clyde/')) {
+        res.writeHead(400).end('bad path');
+        return;
+      }
+      const chunks = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        fileWrites.push({ path: rel, text });
+        overrides.set(rel, text);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      });
+      return;
+    }
+
     if (url.pathname === '/api/project-file') {
       const rel = url.searchParams.get('path') ?? '';
+      if (overrides.has(rel)) {
+        res.writeHead(200, { 'content-type': MIME[path.extname(rel)] ?? 'text/plain' });
+        res.end(overrides.get(rel));
+        return;
+      }
       const abs = path.resolve(PROJECT_ROOT, rel);
       if (!abs.startsWith(PROJECT_ROOT) || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
         res.writeHead(404).end('not found');
@@ -47,6 +76,13 @@ export function startFixtureServer(port = 4123) {
       }
       res.writeHead(200, { 'content-type': MIME[path.extname(abs)] ?? 'application/octet-stream' });
       fs.createReadStream(abs).pipe(res);
+      return;
+    }
+
+    // QA readback: the project-file writes the UI has actually POSTed.
+    if (url.pathname === '/fixture/file-writes') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(fileWrites));
       return;
     }
 
@@ -111,9 +147,12 @@ export function startFixtureServer(port = 4123) {
 
     // QA trigger: push a live blocking exhibit (request_review) to connected
     // clients — same reason /fixture/ask exists: the workbench auto-flips to it.
-    if (url.pathname === '/fixture/exhibit') {
-      const exhibit = { id: 'ex-live', ts: new Date().toISOString(), type: 'exhibit', turnId: 't5', ...LIVE_EXHIBIT };
-      const status = { id: 'ex-live-status', ts: new Date().toISOString(), type: 'status', status: 'awaiting_input' };
+    if (url.pathname === '/fixture/exhibit' || url.pathname === '/fixture/exhibit-html') {
+      const html = url.pathname.endsWith('-html');
+      const spec = html ? LIVE_EXHIBIT_HTML : LIVE_EXHIBIT;
+      const id = html ? 'ex-live-html' : 'ex-live';
+      const exhibit = { id, ts: new Date().toISOString(), type: 'exhibit', turnId: 't5', ...spec };
+      const status = { id: `${id}-status`, ts: new Date().toISOString(), type: 'status', status: 'awaiting_input' };
       for (const ws of sockets) {
         ws.send(JSON.stringify({ type: 'event', event: exhibit }));
         ws.send(JSON.stringify({ type: 'event', event: status }));
@@ -193,7 +232,7 @@ export function startFixtureServer(port = 4123) {
         };
       } else if (msg.type === 'exhibit_response') {
         settled = {
-          id: `ex-live-${msg.verdict}`, ts, type: 'exhibit_settled',
+          id: `ex-live-${msg.exhibitId}-${msg.verdict}`, ts, type: 'exhibit_settled',
           exhibitId: msg.exhibitId, verdict: msg.verdict, ...(msg.comment ? { comment: msg.comment } : {}),
         };
       } else return;

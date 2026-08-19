@@ -68,9 +68,9 @@ export function HtmlFile({ path }: { path: string }) {
   return (
     <div className="html-frame">
       <iframe className="html-iframe" src={fileUrl(path)} title={path} sandbox="allow-scripts" />
-      <div className="html-frame-note">
+      <div className="html-frame-note" title={`${path} — rendered sandboxed; drag the corner to resize`}>
         <span className="file-path">{path}</span>
-        <span>sandboxed · drag the corner to resize</span>
+        <span className="html-frame-tag">sandboxed</span>
       </div>
     </div>
   );
