@@ -12,6 +12,22 @@ import type {
   Thread,
 } from '@clyde/shared';
 
+/** One /btw aside, in memory only. Asides are answered by an ephemeral read-only
+ *  observer and never enter the event log, so they live here and nowhere else —
+ *  a reload drops them by design (they are questions, not record). */
+export interface AsideCard {
+  asideId: string;
+  question: string;
+  model: string;
+  startedAt: string;
+  /** Set once the observer answers (markdown) or fails. */
+  answer?: string;
+  error?: string;
+  costUsd?: number;
+  durationMs?: number;
+  done: boolean;
+}
+
 export interface UIState {
   connected: boolean;
   projectName: string;
@@ -32,6 +48,8 @@ export interface UIState {
   gitStatus: GitStatus | null;
   model: string | null;
   effort: string | null;
+  /** Live /btw asides, oldest first. Transient: never restored on reconnect. */
+  asides: AsideCard[];
 }
 
 const initial: UIState = {
@@ -52,11 +70,13 @@ const initial: UIState = {
   gitStatus: null,
   model: null,
   effort: null,
+  asides: [],
 };
 
 type Action =
   | { kind: 'hello'; snapshot: Snapshot }
   | { kind: 'server'; msg: ServerMessage }
+  | { kind: 'dismiss_aside'; asideId: string }
   | { kind: 'disconnected' };
 
 function applyEvent(state: UIState, event: SessionEvent): UIState {
@@ -123,6 +143,10 @@ function reducer(state: UIState, action: Action): UIState {
         gitStatus: s.gitStatus ?? null,
         model: s.model ?? null,
         effort: s.effort ?? null,
+        // Asides are client-side cards, not session state: a hello (reconnect,
+        // new session, model rotation) must not sweep away answers the user is
+        // still reading. Only a page reload drops them.
+        asides: state.asides,
       };
     }
     case 'server': {
@@ -143,16 +167,56 @@ function reducer(state: UIState, action: Action): UIState {
           return { ...state, gitStatus: msg.status };
         case 'goal':
           return { ...state, goalMarkdown: msg.markdown };
+        case 'aside_started':
+          return {
+            ...state,
+            asides: [
+              ...state.asides,
+              { asideId: msg.asideId, question: msg.question, model: msg.model, startedAt: msg.ts, done: false },
+            ],
+          };
+        case 'aside_result':
+          return {
+            ...state,
+            asides: state.asides.map((a) =>
+              a.asideId === msg.asideId
+                ? {
+                    ...a,
+                    done: true,
+                    answer: msg.text,
+                    error: msg.error,
+                    costUsd: msg.costUsd,
+                    durationMs: msg.durationMs,
+                    model: msg.model,
+                  }
+                : a,
+            ),
+          };
         default:
           return state;
       }
     }
+    case 'dismiss_aside':
+      return { ...state, asides: state.asides.filter((a) => a.asideId !== action.asideId) };
     case 'disconnected':
-      return { ...state, connected: false, status: 'disconnected' };
+      // The aside result rides the socket that just died — a card left spinning
+      // would wait forever, so say what happened instead.
+      return {
+        ...state,
+        connected: false,
+        status: 'disconnected',
+        asides: state.asides.map((a) =>
+          a.done ? a : { ...a, done: true, error: 'lost the connection before the observer answered' },
+        ),
+      };
   }
 }
 
-export function useClyde(): { state: UIState; send: (msg: ClientMessage) => void } {
+export function useClyde(): {
+  state: UIState;
+  send: (msg: ClientMessage) => void;
+  dismissAside: (asideId: string) => void;
+} {
   const [state, dispatch] = useReducer(reducer, initial);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -180,5 +244,6 @@ export function useClyde(): { state: UIState; send: (msg: ClientMessage) => void
   }, []);
 
   const send = (msg: ClientMessage) => wsRef.current?.send(JSON.stringify(msg));
-  return { state, send };
+  const dismissAside = (asideId: string) => dispatch({ kind: 'dismiss_aside', asideId });
+  return { state, send, dismissAside };
 }

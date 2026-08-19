@@ -40,6 +40,39 @@ const A4 = `Captured the screenshot set across the main states — pushing them 
 export const DELTA_TEXT =
   'Now judging the screenshots against the bar: checking the conversation column measure, chip alignment, thread indentation, and every empty state…';
 
+// ---------- /btw asides ----------
+// Asides are transient broadcasts, never session events — so the fixture cannot
+// bake them into the snapshot. It answers a live `aside` client message with
+// these two canned messages instead, the same pair the real server emits around
+// an observer query.
+const ASIDE_ANSWER = `Three tasks are open right now (\`.clyde/tasks.json\`):
+
+- **#3 Playwright screenshot QA harness** — in progress; \`qa/screenshot.mjs\` exists and captures 20 states.
+- **#4 Context meter: pull-back-in affordance** — pending, nothing on disk yet.
+- **#8 Queue chips: say they deliver verbatim** — pending, from the \`2026-08-18-polish-pass\` batch.
+
+Since the last commit (\`1931add\`, "Default agent effort to xhigh") the working tree has 3 dirty files, all under \`packages/web/src/\`. No decision in \`.clyde/DECISIONS.md\` covers the pull-back-in shape yet, so #4 is unspecified as well as unstarted.`;
+
+export const ASIDE_QUESTION = 'Which tasks are still open, and has anything landed since the last commit?';
+
+export const asideStarted = (asideId, model = 'claude-haiku-4-5') => ({
+  type: 'aside_started',
+  asideId,
+  question: ASIDE_QUESTION,
+  model,
+  ts: new Date().toISOString(),
+});
+
+export const asideResult = (asideId, model = 'claude-haiku-4-5') => ({
+  type: 'aside_result',
+  asideId,
+  text: ASIDE_ANSWER,
+  costUsd: 0.0031,
+  durationMs: 4200,
+  model,
+  ts: new Date().toISOString(),
+});
+
 export function buildSnapshot(projectRoot) {
   let goalMarkdown = null;
   try {

@@ -75,6 +75,45 @@ try {
   await page.locator('.review-banner button').click();
   await page.locator('.composer textarea').fill('');
 
+  // 28a — /btw armed: the aside toggle lit, its banner explaining that the
+  // question never reaches Clyde, question typed and ready to ask.
+  await page.locator('.aside-toggle').click();
+  await page.waitForSelector('.aside-banner');
+  const asideQuestion = 'Which tasks are still open, and has anything landed since the last commit?';
+  await page.locator('.composer textarea').fill(asideQuestion);
+  await shot('28a-btw-armed');
+
+  // 28b — ask it: the composer disarms immediately and the card appears above
+  // the composer in its running state ("observer reading the workspace…").
+  await page.locator('.composer button.primary').click();
+  await page.waitForSelector('.aside-card.running');
+  if (await page.locator('.composer.aside-armed').count())
+    throw new Error('/btw: submitting an aside should disarm the toggle');
+  await page.waitForTimeout(250); // the card's entry animation settles
+  await shot('28b-aside-running');
+
+  // 28c — the answer lands: markdown body plus the model · duration · cost chip.
+  // Aside cost is per-card and never joins the session gauge in the top bar.
+  await page.waitForSelector('.aside-card:not(.running) .aside-answer');
+  await page.waitForTimeout(200);
+  await shot('28c-aside-card');
+
+  // Behavioral assertion: an armed /btw submits an `aside` client message —
+  // never a send_message, so the question cannot reach the agent or the queue.
+  const sent = await page.evaluate(() => fetch('/fixture/client-messages').then((r) => r.json()));
+  const asideMsg = sent.find((m) => m.type === 'aside');
+  if (!asideMsg) throw new Error('/btw: submitting while armed must emit an `aside` client message');
+  if (asideMsg.text !== asideQuestion || !asideMsg.asideId)
+    throw new Error('/btw: the aside message must carry the question text and an asideId');
+  if (sent.some((m) => m.type === 'send_message'))
+    throw new Error('/btw: an aside must never be delivered to the agent as send_message');
+  // The aside lives above the composer, not in the conversation document.
+  if (await page.locator('.conversation .aside-card').count())
+    throw new Error('/btw: aside cards must not render inside the conversation document');
+
+  await page.locator('.aside-card .aside-x').click(); // dismiss — later captures start clean
+  await page.locator('.composer textarea').fill('');
+
   // 2b — composer attachment chips: file via the (hidden) picker input + text alongside
   await page.setInputFiles('.composer input[type="file"]', path.join(HERE, 'fixtures/attachment-sample.png'));
   await page.waitForSelector('.attachment img');

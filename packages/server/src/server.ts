@@ -7,6 +7,7 @@ import { AgentSession, type Broadcast } from './agentSession.js';
 import { ClydeStore } from './store.js';
 import { listCommits, repoStatus, showCommit } from './git.js';
 import { initLogger, slog, tailLog } from './log.js';
+import { ASIDE_MODEL, runAside } from './observer.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html',
@@ -223,6 +224,27 @@ export async function startServer(projectRoot: string, port: number, freshSessio
         case 'edit_task':
           session.editTask(msg);
           break;
+        case 'aside': {
+          // Asides bypass the session entirely: nothing is enqueued, nothing is
+          // appended to the event log — just two transient broadcasts around an
+          // independent read-only observer query. Concurrent asides are fine;
+          // asideId keys each one.
+          const question = msg.text.trim();
+          if (!question) break;
+          const asideId = msg.asideId;
+          slog('aside', 'info', 'aside asked', { asideId, model: ASIDE_MODEL, chars: question.length });
+          broadcastAll({
+            type: 'aside_started',
+            asideId,
+            question,
+            model: ASIDE_MODEL,
+            ts: new Date().toISOString(),
+          });
+          void runAside(projectRoot, question, { sessionId: store.sessionId }).then((r) =>
+            broadcastAll({ type: 'aside_result', asideId, ...r, ts: new Date().toISOString() }),
+          );
+          break;
+        }
         case 'compact':
           session.requestCompact();
           break;
