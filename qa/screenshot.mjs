@@ -63,7 +63,9 @@ try {
   await page.locator('.model-chip').click();
   await page.waitForSelector('.model-pop');
   await shot('02c-model-picker');
-  await page.locator('.model-pop-backdrop').click();
+  // The popover (now three sections) can cover the backdrop's center — dismiss
+  // from the corner instead of letting Playwright aim for the middle.
+  await page.locator('.model-pop-backdrop').click({ position: { x: 5, y: 5 } });
 
   // 2d — review-intake mode armed: amber banner + placeholder, dump in progress
   await page.locator('.review-toggle').click();
