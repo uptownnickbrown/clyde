@@ -218,7 +218,11 @@ try {
   // "[Decisions edited]" note for the agent.
   await page.waitForSelector('.workbar.idle', { timeout: 240000 });
   {
-    const REPO = path.resolve(OUT, '..'); // the Clyde repo itself — never the subject
+    // The Clyde repo itself is never the subject: 8b writes a ledger, and this file
+    // lives in the repo it must not touch. realpath + prefix comparison so a symlinked
+    // or subdirectory root cannot slip past an equality check. (OUT is qa/screenshots,
+    // two levels below the root.)
+    const REPO = fs.realpathSync(path.resolve(OUT, '../..'));
     // Explicit beats inferred; otherwise read the root off the server's own boot log.
     let projectRoot = process.env.CLYDE_LIVE_PROJECT;
     if (!projectRoot) {
@@ -238,17 +242,27 @@ try {
         'cannot locate the scratch project root — set CLYDE_LIVE_PROJECT=<path> (the boot log had scrolled past tail=2000)',
       );
     }
-    if (path.resolve(projectRoot) === REPO) {
+    const subject = fs.existsSync(projectRoot)
+      ? fs.realpathSync(path.resolve(projectRoot))
+      : path.resolve(projectRoot);
+    if (subject === REPO || subject.startsWith(REPO + path.sep)) {
       throw new Error('live-drive is pointed at the Clyde repo itself — it edits the decision ledger; use a scratch project');
     }
 
     const ledgerPath = path.join(projectRoot, '.clyde', 'DECISIONS.md');
-    const existed = fs.existsSync(ledgerPath);
-    const original = existed ? fs.readFileSync(ledgerPath, 'utf8') : null;
+    if (fs.existsSync(ledgerPath)) {
+      // A pre-existing ledger is AGENT state. This section only ever splices lines it
+      // seeded itself; a whole-file restore would clobber any agent append that lands
+      // mid-run — the exact hazard the decisions route exists to avoid. Fresh scratch
+      // projects start without a ledger, so this refusal costs nothing.
+      throw new Error(
+        'scratch project already has .clyde/DECISIONS.md — 8b only edits a ledger it seeded; use a fresh scratch project',
+      );
+    }
     const SEED_A = '- Decided: the live-drive harness seeds this ledger to exercise the edit route (2026-08-19)';
-    const SEED_B = '- Deferred: deleting the seeded ledger afterwards — revisit when live-drive gets a teardown phase (2026-08-19)';
+    const SEED_B = '- Deferred: a second seeded ruling so delete keeps a neighbour — revisit never; this file is torn down (2026-08-19)';
     const PREAMBLE = '# Decisions\n\nSeeded by qa/live-drive.mjs.\n\n';
-    if (!existed) fs.writeFileSync(ledgerPath, `${PREAMBLE}${SEED_A}\n${SEED_B}\n`);
+    fs.writeFileSync(ledgerPath, `${PREAMBLE}${SEED_A}\n${SEED_B}\n`);
 
     // Watch the socket: a save has to reach every OTHER open panel, not just the saver.
     const sock = new WebSocket('ws://localhost:4141/ws', { headers: { origin: 'http://localhost:4141' } });
@@ -340,9 +354,8 @@ try {
       await shot('live-16-decisions-panel');
     } finally {
       sock.close();
-      if (original !== null) fs.writeFileSync(ledgerPath, original);
-      else fs.rmSync(ledgerPath, { force: true });
-      log('decisions: scratch ledger restored');
+      fs.rmSync(ledgerPath, { force: true });
+      log('decisions: seeded scratch ledger removed');
     }
   }
 

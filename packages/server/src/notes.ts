@@ -12,6 +12,12 @@
 // the burst, re-resolves the getter when it fires, and delivers only if the live session
 // is still that same, undisposed one. Otherwise the note is dropped — there is nobody
 // left to tell, and the edit itself is on disk where the new session will read it.
+//
+// Model rotation (set_model) also swaps the session object while RESUMING the same
+// conversation, so its in-window notes are dropped too. Accepted: the window is seconds
+// wide, the edit is on disk where the resumed session reads it, and telling the two
+// swap kinds apart would couple this module to session identity it deliberately
+// does not know.
 
 /** What a note needs from a session: somewhere to put it, and whether anyone is home.
  *  Structural on purpose — this module must not depend on AgentSession. */
