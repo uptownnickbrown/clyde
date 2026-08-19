@@ -16,6 +16,10 @@ export function PanelBody({ content }: { content: PanelContent }) {
       return <Metrics path={content.path} />;
     case 'iframe':
       return <iframe src={content.url} title={content.url} className="panel-iframe" />;
+    case 'html':
+      return <div className="empty">html exhibit — renderer lands with #33</div>;
+    case 'table':
+      return <div className="empty">table exhibit — renderer lands with #33</div>;
   }
 }
 

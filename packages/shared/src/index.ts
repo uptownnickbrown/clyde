@@ -45,6 +45,9 @@ export interface TaskItem {
   batch?: string;
   /** Why the user declined this item (status 'declined'). */
   declineReason?: string;
+  /** Provenance: sha of the commit that closed this task, recorded by the agent
+   *  when it marks the task completed. Lets the UI walk task → commit → evidence. */
+  commit?: string;
 }
 
 // ---------- Questions (AskUserQuestion interception) ----------
@@ -80,7 +83,14 @@ export type PanelContent =
   | { kind: 'image-gallery'; glob: string }
   | { kind: 'markdown'; path: string }
   | { kind: 'metrics'; path: string }
-  | { kind: 'iframe'; url: string };
+  | { kind: 'iframe'; url: string }
+  /** A model-AUTHORED project file (plot, interactive, report) rendered in a
+   *  sandboxed iframe. There is deliberately no charting DSL: the model
+   *  constructs the representation it wants judged. */
+  | { kind: 'html'; path: string }
+  /** A JSON project file `{ columns: string[], rows: (string|number)[][] }`,
+   *  natively rendered. Agent-written — normalize on read, never trust shape. */
+  | { kind: 'table'; path: string };
 
 /** A durable pushed panel: content plus its registry identity. */
 export type PanelSpec = PanelContent & { id: string; title: string };

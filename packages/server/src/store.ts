@@ -231,6 +231,7 @@ export function normalizeTasks(raw: unknown): TaskItem[] {
     }
     if (o.batch != null) task.batch = String(o.batch);
     if (o.declineReason != null) task.declineReason = String(o.declineReason);
+    if (o.commit != null) task.commit = String(o.commit);
     tasks.push(task);
   }
   return tasks;
