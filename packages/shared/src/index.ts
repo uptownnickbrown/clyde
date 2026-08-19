@@ -73,11 +73,44 @@ export type QuestionAnswers = Record<string, string | string[]>;
 
 // ---------- Panels (agent-pushed UI) ----------
 
-export type PanelSpec =
-  | { id: string; kind: 'image-gallery'; title: string; glob: string }
-  | { id: string; kind: 'markdown'; title: string; path: string }
-  | { id: string; kind: 'metrics'; title: string; path: string }
-  | { id: string; kind: 'iframe'; title: string; url: string };
+/** What the agent can put on screen, independent of where it lands. One vocabulary,
+ *  two tenants: durable panels (push_panel → left-rail Artifacts) and blocking
+ *  exhibits (request_review → the attention surface). Renderers switch on `kind`. */
+export type PanelContent =
+  | { kind: 'image-gallery'; glob: string }
+  | { kind: 'markdown'; path: string }
+  | { kind: 'metrics'; path: string }
+  | { kind: 'iframe'; url: string };
+
+/** A durable pushed panel: content plus its registry identity. */
+export type PanelSpec = PanelContent & { id: string; title: string };
+
+// ---------- Exhibits (blocking evidence pushed for approval) ----------
+
+export type ExhibitVerdict = 'approved' | 'declined';
+
+/** pending — the agent's request_review call is still blocked on the user.
+ *  approved/declined — the user ruled; the verdict went back as the tool result.
+ *  expired — logged but no live resolver: the blocked call died with a server
+ *  restart (or an interrupt), so ruling on it now would reach nobody. */
+export type ExhibitStatus = 'pending' | ExhibitVerdict | 'expired';
+
+export interface Exhibit {
+  id: string;
+  title: string;
+  content: PanelContent;
+  /** The task this evidence is offered against — the acceptance gate it feeds. */
+  taskId?: string;
+  /** What the agent wants judged, in a sentence or two. */
+  detail?: string;
+  /** When the exhibit was pushed. */
+  ts: string;
+  status: ExhibitStatus;
+  /** The user's optional note; on a decline it is the fix list. */
+  comment?: string;
+  /** When the verdict landed (status approved | declined). */
+  settledTs?: string;
+}
 
 // ---------- Git ----------
 
@@ -155,6 +188,18 @@ export type SessionEventBody =
     }
   | { type: 'question'; questionId: string; questions: Question[]; turnId: string }
   | { type: 'question_answered'; questionId: string; answers: QuestionAnswers; response?: string }
+  /** The agent pushed evidence and blocked on a verdict (request_review). */
+  | {
+      type: 'exhibit';
+      exhibitId: string;
+      title: string;
+      content: PanelContent;
+      taskId?: string;
+      detail?: string;
+      turnId: string;
+    }
+  /** The user ruled; the verdict is already on its way back as the tool result. */
+  | { type: 'exhibit_settled'; exhibitId: string; verdict: ExhibitVerdict; comment?: string }
   | { type: 'tasks_updated'; tasks: TaskItem[] }
   | { type: 'commit'; commit: CommitInfo }
   | { type: 'compaction'; preTokens?: number; trigger?: string }
@@ -203,6 +248,9 @@ export type ClientMessage =
   | { type: 'thread_reply'; threadId: string; text: string; urgent?: boolean }
   | { type: 'resolve_thread'; threadId: string }
   | { type: 'answer_question'; questionId: string; answers: QuestionAnswers; response?: string }
+  /** The user's verdict on a blocking exhibit; the comment rides back to the agent
+   *  as part of the request_review tool result (on a decline it is the fix list). */
+  | { type: 'exhibit_response'; exhibitId: string; verdict: ExhibitVerdict; comment?: string }
   | { type: 'withdraw_queued'; queuedId: string }
   | { type: 'interrupt' }
   | { type: 'compact' }
@@ -222,6 +270,9 @@ export interface Snapshot {
   threads: Thread[];
   queue: QueuedItem[];
   panels: PanelSpec[];
+  /** Every exhibit this session pushed, with live status — a reload must still
+   *  show a pending card (and must not offer actions on an expired one). */
+  exhibits: Exhibit[];
   tasks: TaskItem[];
   commits: CommitInfo[];
   status: AgentStatus;
