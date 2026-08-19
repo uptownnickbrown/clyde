@@ -110,7 +110,13 @@ button:disabled { opacity: 0.4; cursor: default; }
 .rail-btn svg { width: 19px; height: 19px; }
 .rail-btn:hover { background: var(--bg-hover); color: var(--text-dim); }
 .rail-btn.active { background: var(--accent-soft); color: var(--accent); }
-.rail-btn.rail-bottom { margin-top: auto; }
+/* The system cluster (Activity · Context · Logs) anchors to the rail's bottom,
+   separated by a hairline — introspection, apart from the working loop. */
+.rail-btn.rail-bottom { margin-top: auto; position: relative; }
+.rail-btn.rail-bottom::before {
+  content: ''; position: absolute; top: -7px; left: 9px; right: 9px; height: 1px;
+  background: var(--line, rgba(148, 163, 184, 0.18));
+}
 .rail-badge {
   position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; border-radius: 7px;
   font-size: 9.5px; line-height: 14px; padding: 0 3px; font-weight: 650;
@@ -279,6 +285,22 @@ button.linklike:disabled { opacity: 0.55; cursor: default; }
 .act pre { width: 100%; margin: 4px 0; background: var(--bg-raised); padding: 8px; border-radius: 6px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; }
 .act .ok { color: var(--ok); } .act .err { color: var(--danger); }
 .act-sub { font-size: 10px; background: var(--bg-raised); border-radius: 8px; padding: 0 6px; color: var(--text-dim); }
+/* Audit 2026-08-19: rows read as sentences — status glyph, tool, then its object.
+   Keep wrap so the expanded pre drops to its own full-width line; the flexing
+   act-target is what keeps the summary itself on one line. */
+.act { align-items: baseline; }
+.act pre { flex-basis: 100%; }
+.act-target {
+  font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; min-width: 0; flex: 1;
+}
+.act-running { color: var(--text-faint); }
+.act-dispatch { background: var(--bg-raised); border-radius: 6px; padding: 4px 6px; margin: 4px 0; border-bottom: none; }
+.act-dispatch .act-target { color: var(--text); font-weight: 550; }
+
+/* Legacy review checklists: provenance, collapsed by default. */
+.review-legacy-note { font-size: 11px; color: var(--text-faint); font-style: italic; margin: 2px 0 4px; }
+.review-legacy .review-burndown .linklike { margin-left: 8px; }
 
 .logs-toggle { font-size: 12px; color: var(--text-dim); display: block; margin-bottom: 6px; }
 .log-row {

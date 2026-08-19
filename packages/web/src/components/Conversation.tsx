@@ -331,6 +331,12 @@ function deriveItems(events: SessionEvent[]) {
           flush();
           break;
         }
+        // A tool-only turn can end with an empty prose message — logged, but an
+        // empty bubble in the document is noise (seen live: critic dispatches).
+        if (e.type === 'assistant_message' && !e.markdown.trim()) {
+          flush();
+          break;
+        }
         if (e.threadId) {
           const list = threadMessages.get(e.threadId) ?? [];
           list.push(e);

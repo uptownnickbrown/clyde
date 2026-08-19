@@ -96,14 +96,18 @@ const ICONS: Record<Capability, JSX.Element> = {
   ),
 };
 
+/** Rail order tells the story of the loop (audit 2026-08-19): intent (Goal) →
+ *  plan (Tasks) → execution (Git, Agents) → evidence (Artifacts) → judgment
+ *  (Decisions, Reviews) — then a bottom-anchored system cluster (Activity,
+ *  Context, Logs) for introspection. Key order below IS the render order. */
 const LABELS: Record<Capability, string> = {
   goal: 'Goal',
   tasks: 'Tasks',
   git: 'Git timeline',
+  agents: 'Agents',
+  artifacts: 'Artifacts',
   decisions: 'Decisions',
   reviews: 'Reviews',
-  artifacts: 'Artifacts',
-  agents: 'Agents',
   activity: 'Activity',
   context: 'Context',
   logs: 'Logs',
@@ -136,7 +140,7 @@ export function Rail({
         return (
           <button
             key={c}
-            className={`rail-btn${active === c ? ' active' : ''}${c === 'logs' ? ' rail-bottom' : ''}`}
+            className={`rail-btn${active === c ? ' active' : ''}${c === 'activity' ? ' rail-bottom' : ''}`}
             title={LABELS[c]}
             aria-label={LABELS[c]}
             onClick={() => onSelect(c)}

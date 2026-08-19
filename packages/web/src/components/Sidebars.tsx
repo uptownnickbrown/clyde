@@ -389,7 +389,12 @@ function CommitDetail({ commit }: { commit: CommitInfo }) {
   }, [commit.sha]);
   if (text === null) return <div className="commit-detail empty">loading…</div>;
   const patchIdx = text.indexOf('\ndiff --git');
-  const stat = patchIdx >= 0 ? text.slice(0, patchIdx) : text;
+  // The card already shows sha + relative time; git-show's commit/Author/Date
+  // preamble is duplicate chrome — keep the message body and the stat.
+  const stat = (patchIdx >= 0 ? text.slice(0, patchIdx) : text)
+    .split('\n')
+    .filter((l) => !/^(commit [0-9a-f]{7,}|Author: |Date: )/.test(l))
+    .join('\n');
   const patch = patchIdx >= 0 ? text.slice(patchIdx + 1) : null;
   return (
     <div className="commit-detail" onClick={(e) => e.stopPropagation()}>
@@ -486,42 +491,104 @@ export function GoalPanel({ markdown }: { markdown: string | null }) {
   );
 }
 
+/** The object of a tool call, so a row reads as a sentence: "Read store.ts",
+ *  "Bash npm run typecheck", "Grep panelContentOf". Best-effort over untyped input. */
+function toolTarget(tool: string, input: unknown): string {
+  const o = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  const tail = (p: string) => p.split('/').slice(-2).join('/');
+  switch (tool.replace(/^mcp__\w+?__/, '')) {
+    case 'Read':
+    case 'Write':
+    case 'Edit':
+      return str(o.file_path) ? tail(str(o.file_path)!) : '';
+    case 'Bash':
+      return str(o.command)?.replace(/\s+/g, ' ') ?? '';
+    case 'Glob':
+    case 'Grep':
+      return str(o.pattern) ?? '';
+    case 'Task':
+      return str(o.description) ?? '';
+    case 'push_panel':
+    case 'request_review':
+      return str(o.title) ?? '';
+    case 'reply_in_thread':
+      return str(o.thread_id) ?? '';
+    case 'TaskCreate':
+    case 'TaskUpdate':
+      return str(o.subject) ?? str(o.taskId) ?? '';
+    default: {
+      const first = Object.values(o).find((v) => typeof v === 'string') as string | undefined;
+      return first ?? '';
+    }
+  }
+}
+
 export function ActivityPanel({ events }: { events: SessionEvent[] }) {
-  const activity = events.filter(
-    (e): e is Extract<SessionEvent, { type: 'tool_call' | 'tool_result' | 'dispatch' }> =>
-      e.type === 'tool_call' || e.type === 'tool_result' || e.type === 'dispatch',
+  // One row per CALL, its result joined in — a lone "✓" row is noise. Standalone
+  // results (backfill edges) still render so nothing is hidden.
+  const calls: Extract<SessionEvent, { type: 'tool_call' | 'dispatch' }>[] = [];
+  const results = new Map<string, Extract<SessionEvent, { type: 'tool_result' }>>();
+  for (const e of events) {
+    if (e.type === 'tool_call' || e.type === 'dispatch') calls.push(e);
+    else if (e.type === 'tool_result') results.set(e.toolUseId, e);
+  }
+  const matched = new Set([...results.keys()].filter((id) => calls.some((c) => c.toolUseId === id)));
+  const orphans = events.filter(
+    (e): e is Extract<SessionEvent, { type: 'tool_result' }> => e.type === 'tool_result' && !matched.has(e.toolUseId),
+  );
+  const rows: (Extract<SessionEvent, { type: 'tool_call' | 'dispatch' | 'tool_result' }>)[] = [...calls, ...orphans].sort(
+    (a, b) => (a.ts < b.ts ? -1 : 1),
   );
   const [expanded, setExpanded] = useState<string | null>(null);
   return (
     <div className="activity-panel">
-      {activity.length === 0 && <div className="empty">no activity yet</div>}
-      {activity
+      {rows.length === 0 && <div className="empty">no activity yet</div>}
+      {rows
         .slice(-200)
         .reverse()
-        .map((e) => (
-          <div key={e.id} className={`act act-${e.type}`} onClick={() => setExpanded(expanded === e.id ? null : e.id)}>
-            <span className="act-time">{e.ts.slice(11, 19)}</span>
-            {e.type === 'tool_call' && (
-              <>
-                <code>{e.tool.replace(/^mcp__\w+?__/, '')}</code>
-                {e.parentToolUseId && <span className="act-sub">sub</span>}
-                {expanded === e.id && <pre>{JSON.stringify(e.input, null, 2).slice(0, 2000)}</pre>}
-              </>
-            )}
-            {e.type === 'tool_result' && (
-              <>
-                <span className={e.ok ? 'ok' : 'err'}>{e.ok ? '✓' : '✗'}</span>
-                {expanded === e.id && e.preview && <pre>{e.preview}</pre>}
-              </>
-            )}
-            {e.type === 'dispatch' && (
-              <>
-                <code>subagent</code> {e.description ?? e.agentType}
+        .map((e) => {
+          if (e.type === 'dispatch') {
+            return (
+              <div key={e.id} className="act act-dispatch" onClick={() => setExpanded(expanded === e.id ? null : e.id)}>
+                <span className="act-time">{e.ts.slice(11, 19)}</span>
+                <code>subagent</code>
+                <span className="act-target">{e.description ?? e.agentType}</span>
                 {expanded === e.id && <pre>{e.prompt.slice(0, 3000)}</pre>}
-              </>
-            )}
-          </div>
-        ))}
+              </div>
+            );
+          }
+          if (e.type === 'tool_result') {
+            return (
+              <div key={e.id} className="act act-tool_result" onClick={() => setExpanded(expanded === e.id ? null : e.id)}>
+                <span className="act-time">{e.ts.slice(11, 19)}</span>
+                <span className={e.ok ? 'ok' : 'err'}>{e.ok ? '✓' : '✗'}</span>
+                <span className="act-target">(result)</span>
+                {expanded === e.id && e.preview && <pre>{e.preview}</pre>}
+              </div>
+            );
+          }
+          const r = results.get(e.toolUseId);
+          return (
+            <div key={e.id} className="act act-tool_call" onClick={() => setExpanded(expanded === e.id ? null : e.id)}>
+              <span className="act-time">{e.ts.slice(11, 19)}</span>
+              <span className={r ? (r.ok ? 'ok' : 'err') : 'act-running'} title={r ? (r.ok ? 'succeeded' : 'failed') : 'no result yet'}>
+                {r ? (r.ok ? '✓' : '✗') : '⋯'}
+              </span>
+              <code>{e.tool.replace(/^mcp__\w+?__/, '')}</code>
+              {e.parentToolUseId && <span className="act-sub">sub</span>}
+              <span className="act-target" title={toolTarget(e.tool, e.input)}>
+                {toolTarget(e.tool, e.input)}
+              </span>
+              {expanded === e.id && (
+                <pre>
+                  {JSON.stringify(e.input, null, 2).slice(0, 2000)}
+                  {r?.preview ? `\n\n— result —\n${r.preview}` : ''}
+                </pre>
+              )}
+            </div>
+          );
+        })}
     </div>
   );
 }
@@ -672,8 +739,13 @@ function BatchCard({ batch, tasks }: { batch: string; tasks: TaskItem[] }) {
   );
 }
 
+/** Pre-ceremony review files are PROVENANCE, not live state — their checkboxes
+ *  stopped being the source of truth when reviews folded into Tasks (lifecycle
+ *  ruling). Render them collapsed: a summary row, expandable to the full text,
+ *  labeled so a stale box never reads as open work. */
 function ReviewCard({ path }: { path: string }) {
   const [text, setText] = useState('');
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     fetch(`/api/project-file?path=${encodeURIComponent(path)}`)
       .then((r) => r.text())
@@ -683,16 +755,20 @@ function ReviewCard({ path }: { path: string }) {
   const done = (text.match(/^- \[x\]/gim) ?? []).length;
   const total = done + (text.match(/^- \[ \]/gm) ?? []).length;
   return (
-    <section className="panel">
+    <section className="panel review-legacy">
       <div className="review-burndown">
         <div className="gauge-bar">
           <div className="gauge-fill" style={{ width: total ? `${(done / total) * 100}%` : '0%' }} />
         </div>
         <div className="gauge-label">
-          {done}/{total} addressed · {path.split('/').pop()}
+          {done}/{total} checked · {path.split('/').pop()}
+          <button className="linklike" onClick={() => setOpen(!open)}>
+            {open ? 'collapse' : 'read'}
+          </button>
         </div>
       </div>
-      <Md>{text}</Md>
+      <div className="review-legacy-note">legacy checklist — provenance only; live state is the Tasks list</div>
+      {open && <Md>{text}</Md>}
     </section>
   );
 }
@@ -721,9 +797,11 @@ export function ContextPanel({
   for (const e of events) {
     if (e.type === 'tool_call' && (e.tool === 'Read' || e.tool === 'Edit' || e.tool === 'Write')) {
       const p = (e.input as Record<string, unknown>)?.file_path;
-      if (typeof p === 'string') filesRead.set(p, (filesRead.get(p) ?? 0) + 1);
+      // Dependency reads are context noise, not project files the user would pull back in.
+      if (typeof p === 'string' && !p.includes('node_modules/')) filesRead.set(p, (filesRead.get(p) ?? 0) + 1);
     }
   }
+  const filesRanked = [...filesRead.entries()].sort((a, b) => b[1] - a[1]);
   const pct = contextTokens ? Math.min(100, (contextTokens / 1_000_000) * 100) : 0;
   return (
     <div className="context-panel">
@@ -761,7 +839,7 @@ export function ContextPanel({
       )}
       <h4>Files touched (approximate context)</h4>
       <ul className="files-touched">
-        {[...filesRead.entries()].map(([path, count]) => (
+        {filesRanked.map(([path, count]) => (
           <li key={path}>
             <span className="file-path">{path.split('/').slice(-3).join('/')}</span>
             <span className="file-count">×{count}</span>
