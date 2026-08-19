@@ -172,7 +172,7 @@ export async function runAside(
         settingSources: [],
         strictMcpConfig: true,
         mcpServers: {},
-      } as any,
+      },
     });
 
     for await (const msg of q as AsyncIterable<any>) {
