@@ -4,5 +4,11 @@
     "kind": "image-gallery",
     "title": "QA screenshots — workbench + agents-panel wave",
     "glob": "qa/screenshots/*.png"
+  },
+  {
+    "id": "qa-thread-pill",
+    "kind": "image-gallery",
+    "title": "QA: thread pill fix (04 + 04b)",
+    "glob": "qa/screenshots/04*.png"
   }
 ]

@@ -161,7 +161,7 @@
   {
     "id": "26",
     "subject": "Blocking exhibits: approve/decline pushes to the attention surface",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "Generalize the model→UI push so anything needing judgment lands in the right workbench as a BLOCKING exhibit with approve/decline (+comment) semantics that flow back to the agent as a structured result: screenshot sets pending approval, data tables, ad hoc HTML artifacts, metrics. Likely a request_review sibling to push_panel (or a blocking flag + response channel on it). Attention-badged like question cards; outcome recorded against the task that pushed it. This IS the needs-my-eyes maturation per the 2026-08-18 ruling — the surface exists (#15/#21); this generalizes what can land there and adds the approval loop. Flexibility is the point: quality looks different for UI vs API vs data vs ML projects, so the affordance is content-generic. Build FIRST — #27's verdicts ride it.",
     "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
     "batch": "2026-08-19-reviewer-brainstorm"
@@ -177,7 +177,7 @@
   {
     "id": "28",
     "subject": "Composer /btw toggle: ephemeral asides via observer query",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "A toggle on the composer marks a message as an aside: answered by an ephemeral READ-ONLY observer SDK query over .clyde/ state, git, and the event log — never entering the primary agent's context or the conversation document (zero context pollution; threads already cover anchored asides). Renders as an ephemeral card (thread-like presentation); single-shot Q&A first, no follow-up threading until it earns it. Cheap model candidate; separate cost accounting so asides don't muddy the session gauge.",
     "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
     "batch": "2026-08-19-reviewer-brainstorm"
@@ -197,5 +197,11 @@
     "detail": "Merge the reviewer's draft into the current README per the 2026-08-18 ruling: lead with the provocative question + the two pillars (craft/rigor quotes preserved near-verbatim), compressed hard — no one-sentence-per-line manifesto cadence; keep the concrete sections, screenshots, and tables; mark unbuilt items as direction; identity line moves inside (amends the identity-line-leads ruling knowingly). SCOPE.md already carries the north star (committed with this prep). Good candidate to write AFTER #26/#27 land so 'the agent proves its work' describes shipped behavior.",
     "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
     "batch": "2026-08-19-reviewer-brainstorm"
+  },
+  {
+    "id": "32",
+    "subject": "Subagent model split: config, agent-type enforcement, picker row",
+    "status": "pending",
+    "detail": "User-directed (2026-08-19): subagents should run on Opus 5 while the main thread stays Fable-class — encoded, not left to inheritance. config.json gains subagentModel (env CLYDE_SUBAGENT_MODEL, default claude-opus-5), carried through New-session like model/effort. Enforcement over convention: the SDK agents option defines an 'implementer' type pinned to the subagent model; #27's 'critic' defaults to the MAIN model (adversarial judgment is what the frontier model is for); standing orders route dispatches through those types so the choice is structural, not a prompt suggestion. Verify the agent-definition model field's accepted values against the SDK. UI: the #25 picker grows a second row (Session / Subagents), same Apply-on-idle rotation; chip shows both when they differ (e.g. fable · xhigh · agents: opus). Rationale: subagents burn most tokens on briefed implementation; Opus 5 is half Fable's price and plenty capable there. Build with #27 in phase 2."
   }
 ]
