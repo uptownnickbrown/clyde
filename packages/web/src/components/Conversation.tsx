@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ClientMessage, SessionEvent, Thread } from '@clyde/shared';
 import { Md } from './Md';
 
@@ -18,6 +18,7 @@ interface PendingComment {
   quote: string;
   x: number;
   y: number;
+  below: boolean; // selection starts near the viewport top → pill flips below it
 }
 
 /** One autosize for every message box — main composer, thread reply, new thread. */
@@ -84,26 +85,45 @@ export function Conversation({
     return map;
   }, [threads]);
 
-  const onMouseUp = (e: MouseEvent, messageId: string) => {
-    const sel = window.getSelection();
-    const quote = sel?.toString().trim() ?? '';
-    if (quote.length > 2) {
-      setPending({ messageId, quote, x: e.clientX, y: e.clientY });
-    } else {
-      setPending(null);
-    }
-  };
+  // Selection → thread pill. Document-level so releasing the drag outside the
+  // message still counts; anchored to the selection rect, never the cursor.
+  useEffect(() => {
+    const evaluate = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return setPending(null);
+      const quote = sel.toString().trim();
+      if (quote.length < 3) return setPending(null);
+      const range = sel.getRangeAt(0);
+      const node = range.commonAncestorContainer;
+      const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+      const host = el?.closest<HTMLElement>('[data-mid]');
+      if (!host?.dataset.mid) return setPending(null); // spans messages or left the prose
+      const rect = range.getBoundingClientRect();
+      const below = rect.top < 96;
+      setPending({
+        messageId: host.dataset.mid,
+        quote,
+        x: Math.min(Math.max(rect.left + rect.width / 2, 90), window.innerWidth - 90),
+        y: below ? rect.bottom + 10 : rect.top - 10,
+        below,
+      });
+    };
+    // rAF: the selection is only final after the browser finishes the mouseup.
+    const onUp = () => requestAnimationFrame(evaluate);
+    document.addEventListener('mouseup', onUp);
+    return () => document.removeEventListener('mouseup', onUp);
+  }, []);
 
   // Shared per-message thread affordances — identical for user and assistant messages.
 
-  /** Ghost button in the message margin: start a thread on the whole message. */
+  /** Hover pill straddling the message's top-right corner: whole-message thread. */
   const threadAffordance = (messageId: string) => (
     <button
-      className="thread-affordance"
-      title="Start a thread on this message"
+      className="thread-pill thread-affordance"
+      title="Start a thread"
       onClick={() => setComposing({ messageId, quote: null })}
     >
-      ⊕ Thread
+      💬 Thread
     </button>
   );
 
@@ -150,6 +170,7 @@ export function Conversation({
       onScroll={() => {
         const el = scrollRef.current;
         if (el) pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        setPending((p) => (p ? null : p)); // fixed-position pill must not drift over scrolled text
       }}
       onMouseDown={() => setPending(null)}
     >
@@ -196,7 +217,7 @@ export function Conversation({
               <div key={item.event.id} id={`msg-${item.event.id}`} className="msg msg-assistant-wrap">
                 {threadAffordance(item.event.id)}
                 {heads.get(item.event.id) && <SpeakerHead who="clyde" ts={item.event.ts} />}
-                <div className="msg-assistant" onMouseUp={(e) => onMouseUp(e, item.event.id)}>
+                <div className="msg-assistant" data-mid={item.event.id}>
                   <Md>{item.event.markdown}</Md>
                   {item.event.provisional && (
                     <span
@@ -248,10 +269,17 @@ export function Conversation({
 
       {pending && (
         <button
-          className="comment-fab"
-          style={{ left: pending.x, top: pending.y + 12 }}
+          className="thread-pill comment-fab"
+          style={{
+            left: pending.x,
+            top: pending.y,
+            transform: `translate(-50%, ${pending.below ? '0' : '-100%'})`,
+          }}
           onMouseDown={(e) => {
+            e.preventDefault();
             e.stopPropagation();
+            // Collapse the selection or the trailing mouseup re-summons the pill.
+            window.getSelection()?.removeAllRanges();
             setComposing({ messageId: pending.messageId, quote: pending.quote });
             setPending(null);
           }}

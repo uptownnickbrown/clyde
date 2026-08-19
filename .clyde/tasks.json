@@ -152,6 +152,13 @@
     "detail": "DONE (a38b5f9, wave-3 train): wide ≥1280 unchanged (resizers + persistence); medium <1280 one auxiliary surface at a time (React matchMedia coordination); narrow <960 capability panels + workbench become overlay drawers with scrim over a full-width conversation; phone <680 condensed top bar (no gauge/cost), rail-only nav, near-full-width drawers. localStorage describes the wide layout only; below-wide toggles are transient. Gates: all fixture captures unchanged at 1440x900 + new 20a-medium/20b-narrow-drawer/20c-phone with behavioral assertions (not just pixels)."
   },
   {
+    "id": "31",
+    "subject": "Thread pill cleanup: Slack-style affordance, selection-anchored popup",
+    "status": "completed",
+    "detail": "Squeeze-in UI fix (user screenshots 2026-08-19): the hover ⊕ Thread ghost overlapped the message's first line, and the selection 💬 pill spawned at raw cursor coords from a handler on the message div only — unreliable when the drag released outside it, and styled completely differently. Fix: one shared .thread-pill (raised surface, violet accent) for both entry points; hover affordance straddles the message's top-right corner (top:-13px, opaque bg) riding the inter-message whitespace; selection popup anchors to the selection RECT via a document-level mouseup listener (works wherever the drag ends), renders above the selection (below near viewport top), viewport-clamped, dismissed on scroll, selection collapsed on click so the trailing mouseup can't resummon it. Gates: typecheck clean; 24-state fixture run green (04-selection-fab + 04b-message-thread verified by eye). Web-only — no live-drive needed.",
+    "source": { "review": ".clyde/uploads/2026-08-19T02-04-34-Screenshot_2026-08-18_at_10.04.20_PM.png" }
+  },
+  {
     "id": "26",
     "subject": "Blocking exhibits: approve/decline pushes to the attention surface",
     "status": "pending",
