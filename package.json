@@ -2,7 +2,7 @@
   "name": "clyde",
   "private": true,
   "version": "0.1.0",
-  "description": "Clyde — a conversation-centric IDE for agent-driven builds",
+  "description": "Clyde \u2014 a conversation-centric IDE for agent-driven builds",
   "type": "module",
   "workspaces": [
     "packages/*"
@@ -12,7 +12,8 @@
     "build": "npm run build --workspace=@clyde/shared && npm run build --workspace=@clyde/web && npm run build --workspace=@clyde/server",
     "typecheck": "tsc -b packages/shared packages/server packages/web",
     "qa:screens": "npm run build --workspace=@clyde/web && node qa/screenshot.mjs",
-    "qa:backfill": "tsc -b packages/shared packages/server && node qa/backfill-check.mjs"
+    "qa:backfill": "tsc -b packages/shared packages/server && node qa/backfill-check.mjs",
+    "docs:shots": "npm run build --workspace=@clyde/web && node qa/docs-shots.mjs"
   },
   "engines": {
     "node": ">=22"

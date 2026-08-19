@@ -48,7 +48,7 @@ And the agent doesn't dump artifacts — it *authors representations*. Training 
 
 For the adversarial half, Clyde defines a **critic** agent type: read-only by construction, briefed with the goal, the diff, and the evidence, and tasked with finding reasons *not* to accept — it can re-run the tests but cannot fix a thing. The implementer makes the case; the critic challenges it; you judge. Completed tasks record the commit that closed them, exhibits record the task they gate, verdicts record both — so "why do we believe this is done?" has a traceable answer.
 
-![Agent-pushed QA artifacts in the workbench](docs/screenshots/qa-panels.png)
+![Agent-pushed evidence in the Artifacts rail — galleries, metrics, and representations the agent authored](docs/screenshots/qa-panels.png)
 
 ## Blab your feedback, get a checklist
 
@@ -117,7 +117,8 @@ One process = one project. Clyde finds or creates `.clyde/` there and serves the
 ### QA loop
 
 ```bash
-npm run qa:screens      # build + capture 42 deterministic UI states, with behavioral assertions
+npm run qa:screens      # build + capture 39 deterministic UI states (+1 live shot), with behavioral assertions
+npm run docs:shots      # regenerate the README screenshots from the same fixture — doc images can't drift
 npm run qa:backfill     # offline checks over resume/backfill/normalization
 node qa/live-drive.mjs  # drive a live session through the real UI: threads, commits,
                         # questions, model rotation, /btw asides, blocking exhibits
