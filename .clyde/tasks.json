@@ -262,5 +262,15 @@
       "review": "qa/critic-2026-08-19-overnight-closeout.md"
     },
     "batch": "2026-08-19-critic-overnight-closeout"
+  },
+  {
+    "id": "38",
+    "subject": "Agents panel: dispatch_update never fires for background dispatches (stuck 'running')",
+    "status": "pending",
+    "detail": "Observed 2026-08-19: the critic dispatch (toolUseId toolu_01ML3Ss2Z29S2Tq939mg2THn, 11:47:48) completed in 6m14s but the Agents panel showed it running for 2+ hours. Evidence: events.jsonl has the dispatch event and ZERO dispatch_update events in the whole session, so the #23 rule (running until completion signal) never terminates for background dispatches whose spawn ack lands instantly. Likely cause: the task-notification parser (shared live+backfill per #23) does not match the current harness notification format (<task-notification><task-id>/<status>/<result> XML-ish shape) that background Agent-tool completions arrive in. Fix: update the parser to the current format(s), emit dispatch_update on completion notifications, add a backfill/offline check with a real captured notification as fixture; consider a fallback (mark completed when the coordinator's turn consumes the notification) so unrecognized future formats degrade to correct-eventually instead of running-forever.",
+    "source": {
+      "review": "qa/critic-2026-08-19-overnight-closeout.md"
+    },
+    "batch": "2026-08-19-critic-overnight-closeout"
   }
 ]
