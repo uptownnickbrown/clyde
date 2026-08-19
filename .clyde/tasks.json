@@ -209,7 +209,7 @@
     "subject": "README thesis rewrite: never-read-the-code leads, our density kept",
     "status": "completed",
     "commit": "e855292",
-    "detail": "Merge the reviewer's draft into the current README per the 2026-08-18 ruling: lead with the provocative question + the two pillars (craft/rigor quotes preserved near-verbatim), compressed hard — no one-sentence-per-line manifesto cadence; keep the concrete sections, screenshots, and tables; mark unbuilt items as direction; identity line moves inside (amends the identity-line-leads ruling knowingly). SCOPE.md already carries the north star (committed with this prep). Good candidate to write AFTER #26/#27 land so 'the agent proves its work' describes shipped behavior. DONE (e855292), written last as planned: provocative question + both pillars lead near-verbatim, north-star line + per-feature test up top, identity line moved inside, no manifesto cadence; Why/threads/ceremony/decisions/files/run sections kept at density; NEW sections 'The agent proves its work' (response contract, authored evidence, critic, provenance — all shipped, none marked direction because none is), 'Ask without steering' (/btw), 'One agent in front' (agent-type economics); env table gained CLYDE_SUBAGENT_MODEL/CLYDE_ASIDE_MODEL; QA section names 42 states + 8 live-drive flows; closes on the proven-to-work framing the user loved.",
+    "detail": "Merge the reviewer's draft into the current README per the 2026-08-18 ruling: lead with the provocative question + the two pillars (craft/rigor quotes preserved near-verbatim), compressed hard — no one-sentence-per-line manifesto cadence; keep the concrete sections, screenshots, and tables; mark unbuilt items as direction; identity line moves inside (amends the identity-line-leads ruling knowingly). SCOPE.md already carries the north star (committed with this prep). Good candidate to write AFTER #26/#27 land so 'the agent proves its work' describes shipped behavior. DONE (e855292), written last as planned: provocative question + both pillars lead near-verbatim, north-star line + per-feature test up top, identity line moved inside, no manifesto cadence; Why/threads/ceremony/decisions/files/run sections kept at density; NEW sections 'The agent proves its work' (response contract, authored evidence, critic, provenance — all shipped, none marked direction because none is), 'Ask without steering' (/btw), 'One agent in front' (agent-type economics); env table gained CLYDE_SUBAGENT_MODEL/CLYDE_ASIDE_MODEL; QA section names 39 deterministic states +1 live (corrected per #37 — the '42 states + 8 flows' claim was wrong); closes on the proven-to-work framing the user loved.",
     "source": {
       "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt"
     },
@@ -241,36 +241,55 @@
     "subject": "Left-rail audit: right items, right order, informative AND actionable",
     "status": "completed",
     "commit": "ea8765d",
-    "detail": "User-directed (2026-08-19, overnight mandate), DONE (ea8765d + 3ea6eaf). Verdicts from visual QA of every panel: (1) the SET is right — ten items, each earning its lifecycle; nothing added (file tree stays future per SCOPE). (2) ORDER was wrong — now tells the loop: Goal → Tasks → Git → Agents → Artifacts → Decisions → Reviews, with Activity/Context/Logs bottom-anchored behind a hairline as the system cluster (introspection, apart from the working loop). (3) CONTENT: Activity was the worst offender (bare '14:12 Read' rows, lone ✓ rows) — rebuilt: one row per call, result glyph joined (✓/✗/⋯), the call's OBJECT shown (file, command, pattern, title), subagent dispatches as group headers; Reviews' legacy checklists collapsed to provenance-labeled summary rows (they read as open work when they are history — the user's exact complaint); Context drops node_modules noise and ranks by touches; commit expansion drops git-show's duplicate Author/Date preamble; empty tool-only assistant messages no longer render as empty bubbles. Tasks/Agents/Artifacts/Decisions/Goal/Logs judged strong as-is. Ceremony linkage tightened alongside (3ea6eaf): the review file must name spawned decisions. Gates: typecheck, 42 captures green, backfill green."
+    "detail": "User-directed (2026-08-19, overnight mandate), DONE (ea8765d + 3ea6eaf). Verdicts from visual QA of every panel: (1) the SET is right — ten items, each earning its lifecycle; nothing added (file tree stays future per SCOPE). (2) ORDER was wrong — now tells the loop: Goal → Tasks → Git → Agents → Artifacts → Decisions → Reviews, with Activity/Context/Logs bottom-anchored behind a hairline as the system cluster (introspection, apart from the working loop). (3) CONTENT: Activity was the worst offender (bare '14:12 Read' rows, lone ✓ rows) — rebuilt: one row per call, result glyph joined (✓/✗/⋯), the call's OBJECT shown (file, command, pattern, title), subagent dispatches as group headers; Reviews' legacy checklists collapsed to provenance-labeled summary rows (they read as open work when they are history — the user's exact complaint); Context drops node_modules noise and ranks by touches; commit expansion drops git-show's duplicate Author/Date preamble; empty tool-only assistant messages no longer render as empty bubbles. Tasks/Agents/Artifacts/Decisions/Goal/Logs judged strong as-is. Ceremony linkage tightened alongside (3ea6eaf): the review file must name spawned decisions. Gates: typecheck, 40 captures green (corrected per #37 — the commit message's '42' was never true), backfill green."
   },
   {
     "id": "36",
     "subject": "Close the opaque-origin holes behind the CSP sandbox (critic finding 1)",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "The #34 CSP sandbox header is real but its recorded claim is false against its own threat model: from the sandboxed opaque origin, agent-authored script can (a) open ws://localhost:<port>/ws - the WebSocketServer (server.ts:263) has no Origin check, and hello hands over the session snapshot = the event log, plus accepts every user-privileged client message (send_message, interrupt, edit_task, exhibit_response); (b) fire non-preflighted simple POSTs: /api/goal (overwrites SCOPE.md AND injects a note into the agent's turn - prompt-injection channel), /api/project-file?path= (overwrites any non-.clyde file incl. packages/server/src/* which tsx watch then EXECUTES), /api/upload. Fix: Origin check on the WS upgrade (allow the UI origin, reject null/absent), Origin guard or custom-header preflight requirement on all state-changing routes; extend qa/fixture-server.mjs to serve the CSP header on /api/project-file so fixture asserts test what the claim decorates; add assertions (offline where possible, live-drive section for the WS rejection). Also correct #34's overstated detail text when this lands.",
     "source": {
-      "review": "qa/critic-2026-08-19-overnight-closeout.md"
+      "review": ".clyde/reviews/2026-08-19-critic-overnight-closeout.md"
     },
     "batch": "2026-08-19-critic-overnight-closeout"
   },
   {
     "id": "37",
     "subject": "Correct the record: capture count + stale README screenshots (critic findings 2+3)",
-    "status": "pending",
+    "status": "completed",
     "detail": "README.md:120 claims '42 deterministic UI states' but qa/screenshot.mjs has exactly 40 shots (one, 13-live-dogfood, is optional/live, so 39 deterministic) - '42' was never true in the range; it also appears in task #35/#30 details (fix those too; the ea8765d commit message is immutable, the correction lives here). And docs/screenshots/*.png predate the workbench restructure: workspace.png (the hero image under the pillars) shows the old Goal/Panels right rail, contradicting README.md:29-31 copy about the attention-only workbench and new rail order. Regenerate docs/screenshots/ from the current UI and fix the count (or honestly grow the suite). North-star relevance: a fabricated evidence count in THIS project's README fails its own justified-confidence bar.",
     "source": {
-      "review": "qa/critic-2026-08-19-overnight-closeout.md"
+      "review": ".clyde/reviews/2026-08-19-critic-overnight-closeout.md"
     },
     "batch": "2026-08-19-critic-overnight-closeout"
   },
   {
     "id": "38",
     "subject": "Agents panel: dispatch_update never fires for background dispatches (stuck 'running')",
-    "status": "pending",
+    "status": "in_progress",
     "detail": "Observed 2026-08-19: the critic dispatch (toolUseId toolu_01ML3Ss2Z29S2Tq939mg2THn, 11:47:48) completed in 6m14s but the Agents panel showed it running for 2+ hours. Evidence: events.jsonl has the dispatch event and ZERO dispatch_update events in the whole session, so the #23 rule (running until completion signal) never terminates for background dispatches whose spawn ack lands instantly. Likely cause: the task-notification parser (shared live+backfill per #23) does not match the current harness notification format (<task-notification><task-id>/<status>/<result> XML-ish shape) that background Agent-tool completions arrive in. Fix: update the parser to the current format(s), emit dispatch_update on completion notifications, add a backfill/offline check with a real captured notification as fixture; consider a fallback (mark completed when the coordinator's turn consumes the notification) so unrecognized future formats degrade to correct-eventually instead of running-forever.",
     "source": {
-      "review": "qa/critic-2026-08-19-overnight-closeout.md"
+      "review": ".clyde/reviews/2026-08-19-critic-overnight-closeout.md"
     },
     "batch": "2026-08-19-critic-overnight-closeout"
+  },
+  {
+    "id": "39",
+    "subject": "Reviews panel: resolve raw dump via task source.review, graceful when missing",
+    "status": "pending",
+    "detail": "User hit 'not found' on show-raw-dump for the 2026-08-19-critic-overnight-closeout batch: the panel resolves the dump as .clyde/reviews/<batch>.md, but batches can be spawned by non-ceremony flows (critic verdicts) whose tasks carry an explicit source.review path elsewhere. Fixed the DATA today by moving the verdict file into .clyde/reviews/ — the code fix: prefer the batch tasks' source.review path when present (they all share it), fall back to .clyde/reviews/<batch>.md, and when neither exists render an honest explanatory state ('dump not on disk — provenance may be gitignored or pre-date the batch') instead of bare 'not found'. Web-only (PanelContent/Reviews component + maybe the /api/project-file fetch path).",
+    "source": {
+      "review": ".clyde/reviews/2026-08-19-critic-overnight-closeout.md"
+    },
+    "batch": "2026-08-19-critic-overnight-closeout"
+  },
+  {
+    "id": "40",
+    "subject": "Decisions panel: edit and delete rulings from the UI",
+    "status": "pending",
+    "detail": "User request 2026-08-19: a way to delete and/or modify Decisions. Mirror the Goal-edit pattern (#12): pencil/delete affordances on decision cards -> POST /api/decisions writes DECISIONS.md (it is the durable ledger — the file IS the source of truth), broadcast to clients, ONE debounced [Decisions edited] note to the agent so standing orders stay honest (an edited/removed ruling must not be silently re-litigated FROM MEMORY — the agent should acknowledge the ledger changed). Edits should preserve the one-line ledger format; delete should probably strike-through-with-reason or truly remove — decide with a question card at build time if ambiguous. Server-touching -> worktree dispatch.",
+    "source": {
+      "review": ".clyde/uploads/2026-08-19T14-00-12-Screenshot_2026-08-19_at_10.00.09_AM.png"
+    }
   }
 ]
