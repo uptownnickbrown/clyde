@@ -8,6 +8,7 @@ import { ClydeStore } from './store.js';
 import { listCommits, repoStatus, showCommit } from './git.js';
 import { initLogger, slog, tailLog } from './log.js';
 import { ASIDE_MODEL, runAside } from './observer.js';
+import { allowedOrigins, isOriginAllowed, isStateChanging } from './origin.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html',
@@ -116,6 +117,24 @@ export async function startServer(projectRoot: string, port: number, freshSessio
 
   const httpServer = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${port}`);
+
+    // Origin gate (#36) — ONE check, ahead of every route, so a route added later is
+    // covered by construction rather than by remembering. Any state-changing method
+    // (POST/PUT/PATCH/DELETE) from a browser context that is not Clyde's own page is
+    // refused: notably Origin `null`, which is what the CSP-sandboxed opaque origin
+    // serving agent-authored HTML sends. See origin.ts for the trust model.
+    if (isStateChanging(req.method) && !isOriginAllowed(req.headers.origin, port)) {
+      slog('http', 'warn', 'cross-origin write refused', {
+        origin: req.headers.origin,
+        method: req.method,
+        path: url.pathname,
+      });
+      // Drain the body first: a 403 written while the client is still uploading can
+      // reach it as a connection reset instead of a readable response.
+      req.resume();
+      res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden origin');
+      return;
+    }
 
     // Write back a project file the user edited in place (markdown artifacts today).
     // Confined to the project root, existing files only — this is an edit affordance,
@@ -260,7 +279,19 @@ export async function startServer(projectRoot: string, port: number, freshSessio
     res.writeHead(404).end('Clyde server: UI build not found — run `npm run dev` for the Vite dev server.');
   });
 
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // The same origin gate on the upgrade (#36). The socket is the higher-value target
+  // of the two: its hello is the full session snapshot (the event log), and it accepts
+  // every user-privileged message. Refusing at the handshake means an opaque-origin
+  // document never reaches `connection` at all.
+  const wss = new WebSocketServer({
+    server: httpServer,
+    path: '/ws',
+    verifyClient: ({ origin }, done) => {
+      if (isOriginAllowed(origin, port)) return done(true);
+      slog('ws', 'warn', 'upgrade refused: origin not allowed', { origin, allowed: allowedOrigins(port) });
+      done(false, 403, 'forbidden origin');
+    },
+  });
   wss.on('connection', async (ws) => {
     clients.add(ws);
     // Attach the message listener BEFORE the awaited hello: a client that sends
