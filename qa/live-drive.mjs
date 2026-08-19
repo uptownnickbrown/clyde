@@ -147,6 +147,58 @@ try {
   log('rotation kept the conversation (mascot recalled) — model/effort switch OK');
   await shot('live-10-rotated-recall');
 
+  // --- 7: /btw aside — the read-only observer answers without touching the session ---
+  await page.waitForSelector('.workbar.idle', { timeout: 240000 });
+  const docMsgsBefore = await page.locator('.conversation-doc .msg').count();
+  await page.locator('.aside-toggle').click();
+  await page.locator('.composer textarea').fill(
+    'Which file did you create in this project earlier today and what does it contain? One sentence.',
+  );
+  await page.keyboard.press('Enter');
+  log('aside sent');
+  await page.waitForSelector('.aside-card.running', { timeout: 15000 });
+  await shot('live-11-aside-running');
+  await page.waitForSelector('.aside-card:not(.running) .aside-answer', { timeout: 150000 });
+  const asideChip = (await page.locator('.aside-chip').innerText()).trim();
+  const asideText = (await page.locator('.aside-answer').innerText()).trim();
+  if (!asideText) throw new Error('aside answered with empty text');
+  log(`aside answered (${asideChip}): ${asideText.slice(0, 90)}…`);
+  // Zero pollution: the conversation document gained nothing, the session stayed idle.
+  const docMsgsAfter = await page.locator('.conversation-doc .msg').count();
+  if (docMsgsAfter !== docMsgsBefore) throw new Error('aside leaked into the conversation document!');
+  if (!(await page.locator('.workbar.idle').count())) throw new Error('aside changed session status!');
+  await shot('live-12-aside-answered');
+  log('aside round-trip OK — observer live-fire, zero context pollution');
+
+  // --- 8: blocking exhibit — request_review holds the turn until the user rules ---
+  await page.locator('.aside-card .aside-x').click(); // clear the card first
+  await page.locator('.composer textarea').fill(
+    'Call the request_review tool now with title "Haiku check", content kind "markdown" with source "haiku.txt", ' +
+      'and detail "Approve if the haiku file looks right." After my verdict arrives, reply with exactly one line: ' +
+      'VERDICT <the verdict> — <my comment verbatim>.',
+  );
+  await page.keyboard.press('Enter');
+  log('exhibit requested');
+  await page.waitForSelector('.exhibit-card', { timeout: 240000 });
+  log('exhibit card rendered (request_review holds the turn)');
+  await page.waitForTimeout(300);
+  await shot('live-13-exhibit-pending');
+  await page.locator('.exhibit-card .ex-comment').fill('ship it — verified live');
+  await page.locator('.exhibit-card .q-actions button.primary').click();
+  log('approved with comment');
+  // The verdict payload must round-trip: the model echoes verdict AND comment.
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll('.msg-assistant')].some(
+        (m) => /VERDICT\s*approved/i.test(m.textContent ?? '') && /ship it/i.test(m.textContent ?? ''),
+      ),
+    { timeout: 240000 },
+  );
+  log('verdict + comment reached the model (blocking exhibit round-trip OK)');
+  await page.waitForSelector('.ex-settled', { timeout: 30000 });
+  await page.waitForTimeout(300);
+  await shot('live-14-exhibit-settled');
+
   console.log('\nLIVE QA: all flows passed');
 } finally {
   await browser.close();

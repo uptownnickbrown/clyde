@@ -161,8 +161,8 @@
   {
     "id": "26",
     "subject": "Blocking exhibits: approve/decline pushes to the attention surface",
-    "status": "in_progress",
-    "detail": "Generalize the model→UI push so anything needing judgment lands in the right workbench as a BLOCKING exhibit with approve/decline (+comment) semantics that flow back to the agent as a structured result: screenshot sets pending approval, data tables, ad hoc HTML artifacts, metrics. Likely a request_review sibling to push_panel (or a blocking flag + response channel on it). Attention-badged like question cards; outcome recorded against the task that pushed it. This IS the needs-my-eyes maturation per the 2026-08-18 ruling — the surface exists (#15/#21); this generalizes what can land there and adds the approval loop. Flexibility is the point: quality looks different for UI vs API vs data vs ML projects, so the affordance is content-generic. Build FIRST — #27's verdicts ride it.",
+    "status": "completed",
+    "detail": "DONE (train e63e649, agent branch f73b8db, Opus 5 worktree agent). request_review MCP tool blocks exactly like AskUserQuestion: persisted exhibit event → in-memory resolver → JSON {verdict, comment} tool result, no timeout. Shared PanelContent union + one panelContentOf() used by both tools so push_panel and request_review cannot drift. Exhibits workbench tab (attention dot + auto-flip), approve/decline + comment, settled cards collapse to Ruled-on rows; symmetric expiry (server drops resolvers on abort/dispose; reducer expires pending on turn_complete/session_started) so a card never offers a verdict that reaches nobody; WorkBar names the wait ('Clyde needs a verdict on evidence'). Gates: typecheck; 34-state fixture run (26a/26b + behavioral assert that Approve really sends exhibit_response); backfill green; LIVE-FIRED (live-drive §8): haiku pushed a markdown exhibit, approve-with-comment round-tripped — the model echoed 'VERDICT approved — ship it — verified live' — and the settled row rendered (live-13/14 captures). Non-blocking variant + richer content kinds ride #33.",
     "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
     "batch": "2026-08-19-reviewer-brainstorm"
   },
@@ -177,8 +177,8 @@
   {
     "id": "28",
     "subject": "Composer /btw toggle: ephemeral asides via observer query",
-    "status": "in_progress",
-    "detail": "A toggle on the composer marks a message as an aside: answered by an ephemeral READ-ONLY observer SDK query over .clyde/ state, git, and the event log — never entering the primary agent's context or the conversation document (zero context pollution; threads already cover anchored asides). Renders as an ephemeral card (thread-like presentation); single-shot Q&A first, no follow-up threading until it earns it. Cheap model candidate; separate cost accounting so asides don't muddy the session gauge.",
+    "status": "completed",
+    "detail": "DONE (train e63e649, agent branch 389892f, Opus 5 worktree agent). observer.ts one-shot query(): haiku at low effort (CLYDE_ASIDE_MODEL overrides), structurally read-only (tools base set Read/Glob/Grep + disallowedTools Bash/Write/Edit/Task/web), settingSources: [], strictMcpConfig, 120s timeout into an error card. Server pre-gathers git log/status + tasks.json + DECISIONS tail so the observer answers instead of orienting. aside/aside_started/aside_result are transient ServerMessages — never events.jsonl, never the queue, no snapshot field; reload drops cards (v1 ruling), reconnect keeps them. /btw toggle (periwinkle, mutually exclusive with ☰ Review), ephemeral card stack above the composer, cost chip per card — session gauge provably untouched. Gates: typecheck; fixture 28a/b/c with asserts (armed submit emits aside and never send_message; no card inside the conversation); backfill green; LIVE-FIRED (live-drive §7, the observer's first real run): answered in 20.9s / $0.02, sha-grounded, document message count unchanged, session stayed idle.",
     "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
     "batch": "2026-08-19-reviewer-brainstorm"
   },
