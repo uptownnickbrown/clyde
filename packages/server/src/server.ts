@@ -157,7 +157,15 @@ export async function startServer(projectRoot: string, port: number, freshSessio
         res.writeHead(404).end('not found');
         return;
       }
-      res.writeHead(200, { 'content-type': MIME[path.extname(abs)] ?? 'application/octet-stream' });
+      res.writeHead(200, {
+        'content-type': MIME[path.extname(abs)] ?? 'application/octet-stream',
+        // Belt-and-suspenders for agent-authored HTML (#34): the exhibit iframe
+        // already carries sandbox="allow-scripts"; this header additionally
+        // neuters a DIRECT navigation — scripts may run but the document gets an
+        // opaque origin, so Clyde's APIs and localStorage stay out of reach.
+        // Non-document consumers (fetch, <img>) ignore a CSP sandbox directive.
+        'content-security-policy': 'sandbox allow-scripts',
+      });
       fs.createReadStream(abs).pipe(res);
       return;
     }
