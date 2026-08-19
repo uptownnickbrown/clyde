@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { buildSnapshot, DELTA_TEXT, LIVE_EXHIBIT } from './fixture.mjs';
+import { asideResult, asideStarted, buildSnapshot, DELTA_TEXT, LIVE_EXHIBIT } from './fixture.mjs';
 
 const MIME = {
   '.html': 'text/html',
@@ -30,6 +30,10 @@ export function startFixtureServer(port = 4123) {
     throw new Error(`No web build at ${WEB_DIST} — run: npm run build --workspace=@clyde/web`);
   }
   const snapshot = buildSnapshot(PROJECT_ROOT);
+  // Every client message the UI sends, in order — behavioral assertions read it
+  // back over /fixture/client-messages (e.g. "/btw armed sends `aside`, not
+  // `send_message`").
+  const received = [];
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${port}`);
@@ -118,6 +122,13 @@ export function startFixtureServer(port = 4123) {
       return;
     }
 
+    // QA readback: what the UI has actually sent over the socket.
+    if (url.pathname === '/fixture/client-messages') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(received));
+      return;
+    }
+
     if (url.pathname === '/api/logs') {
       res.writeHead(200, { 'content-type': 'text/plain' });
       res.end(FIXTURE_LOGS);
@@ -159,6 +170,18 @@ export function startFixtureServer(port = 4123) {
       try {
         msg = JSON.parse(String(data));
       } catch {
+        return;
+      }
+      received.push(msg);
+      // Asides: the real server broadcasts aside_started immediately, then
+      // aside_result when the observer finishes. Both are transient — nothing is
+      // appended to the snapshot, exactly like production.
+      if (msg.type === 'aside') {
+        for (const s of sockets) s.send(JSON.stringify(asideStarted(msg.asideId)));
+        // Long enough that QA can capture the running state deterministically.
+        setTimeout(() => {
+          for (const s of sockets) s.send(JSON.stringify(asideResult(msg.asideId)));
+        }, 1500);
         return;
       }
       const ts = new Date().toISOString();

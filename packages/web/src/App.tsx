@@ -84,7 +84,7 @@ function initialPanels(): { left: boolean; right: boolean } {
 }
 
 export default function App() {
-  const { state, send } = useClyde();
+  const { state, send, dismissAside } = useClyde();
   const [capability, setCapability] = useState<Capability>(() => store.get('clyde.capability', 'tasks') as Capability);
   const [leftOpen, setLeftOpen] = useState(() => initialPanels().left);
   const [leftW, setLeftW] = useState(() => Number(store.get('clyde.leftW', '300')) || 300);
@@ -283,7 +283,15 @@ export default function App() {
             events={state.events}
             pendingExhibits={pendingExhibits.length}
           />
-          <Composer status={state.status} queue={state.queue} model={state.model} effort={state.effort} send={send} />
+          <Composer
+            status={state.status}
+            queue={state.queue}
+            model={state.model}
+            effort={state.effort}
+            asides={state.asides}
+            onDismissAside={dismissAside}
+            send={send}
+          />
         </main>
 
         {rightOpen ? (

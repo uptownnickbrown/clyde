@@ -261,7 +261,12 @@ export type ClientMessage =
   /** User-edited a task from the Tasks panel. Only the provided fields change;
    *  the server applies + persists them and notifies the agent (debounced into
    *  one note per editing burst, like the Goal panel's save). */
-  | { type: 'edit_task'; taskId: string; subject?: string; status?: TaskItem['status']; detail?: string };
+  | { type: 'edit_task'; taskId: string; subject?: string; status?: TaskItem['status']; detail?: string }
+  /** An aside (composer /btw toggle): a question answered by an ephemeral
+   *  read-only observer query over the workspace. It NEVER enters the agent's
+   *  context, the queue, or the conversation document — asideId only correlates
+   *  the transient aside_started/aside_result broadcasts below. */
+  | { type: 'aside'; asideId: string; text: string };
 
 export interface Snapshot {
   projectName: string;
@@ -291,4 +296,21 @@ export type ServerMessage =
   | { type: 'threads'; threads: Thread[] }
   | { type: 'git_status'; status: GitStatus }
   /** SCOPE.md changed on disk (the user saved it from the Goal panel). */
-  | { type: 'goal'; markdown: string };
+  | { type: 'goal'; markdown: string }
+  /** Aside lifecycle — TRANSIENT by design. Like delta/queue/threads these are
+   *  broadcasts, not SessionEvents: nothing is appended to events.jsonl and no
+   *  snapshot replays them, so a reload drops aside cards (v1 ruling: an aside
+   *  is a question you asked the workspace, not a part of the record). */
+  | { type: 'aside_started'; asideId: string; question: string; model: string; ts: string }
+  | {
+      type: 'aside_result';
+      asideId: string;
+      /** The observer's answer as markdown; absent when the query failed. */
+      text?: string;
+      error?: string;
+      /** Cost of THIS aside — never folded into the session cost gauge. */
+      costUsd?: number;
+      durationMs: number;
+      model: string;
+      ts: string;
+    };
