@@ -255,8 +255,9 @@ export async function startServer(projectRoot: string, port: number, freshSessio
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   wss.on('connection', async (ws) => {
     clients.add(ws);
-    send(ws, { type: 'hello', snapshot: await buildSnapshot() });
-
+    // Attach the message listener BEFORE the awaited hello: a client that sends
+    // immediately on open (protocol probes, scripts) must not race the snapshot
+    // build — events with no listener are silently dropped.
     ws.on('message', (data) => {
       let msg: ClientMessage;
       try {
@@ -375,6 +376,7 @@ export async function startServer(projectRoot: string, port: number, freshSessio
       }
     });
     ws.on('close', () => clients.delete(ws));
+    send(ws, { type: 'hello', snapshot: await buildSnapshot() });
   });
 
   httpServer.listen(port, () => {
