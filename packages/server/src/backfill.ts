@@ -86,6 +86,17 @@ export function truncate(s: string, n: number): string {
 // The harness HTML-escapes instruction-shaped content inside <result> (&lt; &amp; …);
 // we decode after extraction for display. Failed notifications also fire for
 // background Bash tasks — consumers join on dispatch toolUseIds.
+//
+// TWO WIRE FORMS, ONE TRANSLATION (task #38). The text block above is what lands in
+// the CLI's own transcript, which is all backfill ever sees. LIVE, the running server
+// never receives that user message at all: the SDK delivers the completion as a typed
+// system message, {type:'system', subtype:'task_notification', task_id, tool_use_id?,
+// status:'completed'|'failed'|'stopped', output_file, summary, usage:{duration_ms,…}}
+// — verified against the SDK's own SDKTaskNotificationMessage and against a real
+// session where a 6m14s background critic produced system/task_notification and no
+// user entry, so the text-only parser saw nothing and the Agents card ticked for 2h.
+// Both forms funnel through buildDispatchUpdate() below so live and backfill can
+// never drift again.
 
 /** Max chars of a notification <result> report carried on a dispatch_update. */
 const DISPATCH_RESULT_MAX = 4000;
@@ -95,13 +106,62 @@ const decodeEntities = (s: string) =>
 
 export type DispatchUpdateBody = Extract<SessionEventBody, { type: 'dispatch_update' }>;
 
-/** Parse every <task-notification> block in a user-message text into dispatch_update
- *  bodies. Tolerant: missing close tag reads to end of text; blocks without a
- *  tool-use-id (nothing to correlate) are dropped; unknown statuses read as
- *  'completed' (the agent did stop). Shared by live translation and backfill. */
-export function parseTaskNotifications(text: string): DispatchUpdateBody[] {
+/** Raw fields either wire form can supply; missing ones are simply absent. */
+interface NotificationFields {
+  toolUseId?: string;
+  taskId?: string;
+  status?: string;
+  summary?: string;
+  result?: string;
+  durationMs?: number;
+  worktreeBranch?: string;
+  worktreePath?: string;
+}
+
+/** One recognized notification. `degraded` marks a block we could not fully parse but
+ *  still found a correlation id inside — the caller emits a completion anyway and
+ *  warns. A card that ticks forever must require ZERO signal, never a garbled one. */
+export interface ParsedTaskNotification {
+  body: DispatchUpdateBody;
+  taskId?: string;
+  degraded?: boolean;
+}
+
+/** 'stopped' is a real SDK status (TaskStop / kill). The wire union is deliberately
+ *  two-valued — what matters to a "running" card is that the agent is no longer
+ *  running — so a stop reads as 'failed' and the summary carries the nuance. */
+const normalizeStatus = (raw?: string): 'completed' | 'failed' =>
+  raw === 'failed' || raw === 'stopped' || raw === 'killed' || raw === 'error' ? 'failed' : 'completed';
+
+/** The single place a dispatch_update body is built, from either wire form. */
+function buildDispatchUpdate(f: NotificationFields, toolUseId: string): DispatchUpdateBody {
+  return {
+    type: 'dispatch_update',
+    toolUseId,
+    status: normalizeStatus(f.status),
+    ...(f.taskId ? { taskId: f.taskId } : {}),
+    ...(f.summary ? { summary: f.summary } : {}),
+    ...(f.result ? { result: truncate(f.result, DISPATCH_RESULT_MAX) } : {}),
+    ...(typeof f.durationMs === 'number' && Number.isFinite(f.durationMs) ? { durationMs: f.durationMs } : {}),
+    ...(f.worktreeBranch ? { worktreeBranch: f.worktreeBranch } : {}),
+    ...(f.worktreePath ? { worktreePath: f.worktreePath } : {}),
+  };
+}
+
+/** Any tool_use id mentioned anywhere in a blob — the degrade-to-correct fallback for
+ *  a block whose <tool-use-id> tag is malformed, renamed, or absent. */
+const BARE_TOOL_USE_ID = /\b(toolu_[A-Za-z0-9_-]{6,})\b/;
+
+/** Scan every <task-notification> block in a text into parsed notifications, keeping
+ *  the detail (taskId, degraded) that the DispatchUpdateBody alone cannot carry.
+ *  Tolerant by design — a tag scan, never an XML parse: missing close tag reads to
+ *  end of text, field order is irrelevant, <result> may be multi-line, several blocks
+ *  may share one message, and unknown statuses read as 'completed' (the agent stopped
+ *  either way). Blocks with no correlation id at all are dropped; a block whose tags
+ *  we cannot read but which mentions a toolu_ id still yields a completion, degraded. */
+export function scanTaskNotifications(text: string): ParsedTaskNotification[] {
   if (!text.includes('<task-notification>')) return [];
-  const out: DispatchUpdateBody[] = [];
+  const out: ParsedTaskNotification[] = [];
   const blockRe = /<task-notification>([\s\S]*?)(?:<\/task-notification>|$)/g;
   for (let m = blockRe.exec(text); m; m = blockRe.exec(text)) {
     const inner = m[1];
@@ -110,23 +170,128 @@ export function parseTaskNotifications(text: string): DispatchUpdateBody[] {
       const v = t?.[1].trim();
       return v ? decodeEntities(v) : undefined;
     };
-    const toolUseId = tag('tool-use-id');
+    const tagged = tag('tool-use-id');
+    // Degraded: the tag is gone/renamed but the id is in there somewhere. Emitting a
+    // completion off a bare id beats leaving the dispatch pinned at 'running'.
+    const toolUseId = tagged ?? BARE_TOOL_USE_ID.exec(inner)?.[1];
     if (!toolUseId) continue;
-    const summary = tag('summary');
-    const result = tag('result');
-    const worktreeBranch = tag('worktreeBranch');
-    const worktreePath = tag('worktreePath');
+    const durationRaw = tag('duration_ms');
+    const durationMs = durationRaw === undefined ? undefined : Number.parseInt(durationRaw, 10);
+    const fields: NotificationFields = {
+      taskId: tag('task-id'),
+      status: tag('status'),
+      summary: tag('summary'),
+      result: tag('result'),
+      durationMs: durationMs !== undefined && Number.isFinite(durationMs) ? durationMs : undefined,
+      worktreeBranch: tag('worktreeBranch'),
+      worktreePath: tag('worktreePath'),
+    };
     out.push({
-      type: 'dispatch_update',
-      toolUseId,
-      status: tag('status') === 'failed' ? 'failed' : 'completed',
-      ...(summary ? { summary } : {}),
-      ...(result ? { result: truncate(result, DISPATCH_RESULT_MAX) } : {}),
-      ...(worktreeBranch ? { worktreeBranch } : {}),
-      ...(worktreePath ? { worktreePath } : {}),
+      body: buildDispatchUpdate(fields, toolUseId),
+      taskId: fields.taskId,
+      // No <status> AND no tagged id means we read essentially nothing structured.
+      ...(tagged === undefined || fields.status === undefined ? { degraded: true } : {}),
     });
   }
   return out;
+}
+
+/** Parse every <task-notification> block in a text into dispatch_update bodies.
+ *  Shared by live translation and backfill; see scanTaskNotifications for detail. */
+export function parseTaskNotifications(text: string): DispatchUpdateBody[] {
+  return scanTaskNotifications(text).map((n) => n.body);
+}
+
+/** The live wire form: the SDK's SDKTaskNotificationMessage, structurally typed so a
+ *  field the CLI adds or drops cannot throw. */
+export interface SdkTaskNotificationMessage {
+  task_id?: string;
+  tool_use_id?: string;
+  status?: string;
+  summary?: string;
+  output_file?: string;
+  usage?: { duration_ms?: number; total_tokens?: number; tool_uses?: number };
+}
+
+/** Translate a live system/task_notification into a dispatch_update, correlating on
+ *  tool_use_id and falling back to a task-id → tool-use-id mapping the caller kept
+ *  from task_started. Returns null only when NOTHING can be correlated — the one case
+ *  where a card legitimately keeps ticking. `degraded` marks a correlation that came
+ *  from the fallback rather than the message's own tool_use_id. */
+export function dispatchUpdateFromSystemNotification(
+  msg: SdkTaskNotificationMessage,
+  resolveToolUseId?: (taskId: string) => string | undefined,
+): ParsedTaskNotification | null {
+  const taskId = typeof msg?.task_id === 'string' ? msg.task_id : undefined;
+  const direct = typeof msg?.tool_use_id === 'string' && msg.tool_use_id ? msg.tool_use_id : undefined;
+  const toolUseId = direct ?? (taskId ? resolveToolUseId?.(taskId) : undefined);
+  if (!toolUseId) return null;
+  const durationMs = msg?.usage?.duration_ms;
+  return {
+    body: buildDispatchUpdate(
+      {
+        taskId,
+        status: typeof msg?.status === 'string' ? msg.status : undefined,
+        summary: typeof msg?.summary === 'string' ? msg.summary : undefined,
+        durationMs: typeof durationMs === 'number' ? durationMs : undefined,
+      },
+      toolUseId,
+    ),
+    taskId,
+    ...(direct ? {} : { degraded: true }),
+  };
+}
+
+/** Ceiling on an output_file we will read synchronously off the event loop. A real
+ *  6-minute critic's transcript measured 1.2 MB; a day-long agent could be far more,
+ *  and a multi-second stall to fetch a nice-to-have report is a bad trade against the
+ *  completion signal it rides with. Over the cap: no report, still a completion. */
+const OUTPUT_FILE_MAX_BYTES = 16 * 1024 * 1024;
+
+const readOutputFileSync = (p: string): string => {
+  if (fs.statSync(p).size > OUTPUT_FILE_MAX_BYTES) throw new Error('output file too large');
+  return fs.readFileSync(p, 'utf8');
+};
+
+/** Recover a background agent's final report from the notification's output_file.
+ *  The live system message carries only a summary; the report itself lives in that
+ *  file, which is a symlink to the subagent's own JSONL transcript (verified) — so
+ *  read backwards for the last assistant text. A plain-text file is used as-is.
+ *  Every failure degrades to undefined: a missing report is a cosmetic loss, an
+ *  exception here would cost the completion signal itself. */
+export function readTaskOutputReport(
+  outputFile: string | undefined,
+  readFile: (p: string) => string = readOutputFileSync,
+): string | undefined {
+  if (!outputFile) return undefined;
+  let raw: string;
+  try {
+    raw = readFile(outputFile);
+  } catch {
+    return undefined;
+  }
+  const lines = raw.split('\n').filter((l) => l.trim());
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let entry: any;
+    try {
+      entry = JSON.parse(lines[i]);
+    } catch {
+      continue; // not JSONL (or a torn line) — keep looking, then fall back to text
+    }
+    if (entry?.type !== 'assistant') continue;
+    const content = entry?.message?.content;
+    if (!Array.isArray(content)) continue;
+    const text = content
+      .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
+      .map((b: any) => b.text)
+      .join('\n')
+      .trim();
+    if (text) return truncate(text, DISPATCH_RESULT_MAX);
+  }
+  // Not a transcript we understand: treat it as a plain report file.
+  const text = raw.trim();
+  if (!text || text.startsWith('{')) return undefined;
+  return truncate(text, DISPATCH_RESULT_MAX);
 }
 
 /** Where the Claude CLI keeps this project's transcript for a given sdk session.

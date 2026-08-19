@@ -18,8 +18,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(HERE, '../packages/server/dist/backfill.js');
 
 let planBackfill, planJournalRecovery, transcriptPathFor, parseSidebarMarker, parseTaskNotifications;
+let scanTaskNotifications, dispatchUpdateFromSystemNotification, readTaskOutputReport;
 try {
-  ({ planBackfill, planJournalRecovery, transcriptPathFor, parseSidebarMarker, parseTaskNotifications } = await import(DIST));
+  ({
+    planBackfill, planJournalRecovery, transcriptPathFor, parseSidebarMarker, parseTaskNotifications,
+    scanTaskNotifications, dispatchUpdateFromSystemNotification, readTaskOutputReport,
+  } = await import(DIST));
 } catch (err) {
   console.error(`Cannot import ${DIST} — build first: npm run typecheck (or npm run build)`);
   console.error(String(err));
@@ -264,6 +268,147 @@ console.log('11. task-notification backfill');
   );
   check('failed notification parsed without a result', failed.length === 1 && failed[0].status === 'failed' && failed[0].result === undefined, failed);
   check('missing tool-use-id -> dropped', parseTaskNotifications('<task-notification>\n<status>completed</status>').length === 0);
+}
+
+// ---------- 11b. the LIVE notification form (task #38) ----------
+// The bug: a 6m14s background critic completed and the Agents card ticked for 2h,
+// because live the SDK delivers system/task_notification — never the user message the
+// text parser was built for. Fixtures below are the real 2026-08-19 capture
+// (toolu_01ML3Ss2Z29S2Tq939mg2THn / task a4b4e207259718d16), abbreviated.
+console.log('11b. live task_notification -> dispatch_update (#38)');
+{
+  const TOOL_USE_ID = 'toolu_01ML3Ss2Z29S2Tq939mg2THn';
+  const TASK_ID = 'a4b4e207259718d16';
+  const OUTPUT_FILE = `/private/tmp/claude-501/-Users-nbrown-Desktop-clyde/sess/tasks/${TASK_ID}.output`;
+  const RESULT = 'verdict: **reject**\n\nreasons:\n\n1. **#34\'s claim is overstated.**\n2. Screenshot evidence is stale.';
+  const REAL_NOTIF =
+    '<task-notification>\n' +
+    `<task-id>${TASK_ID}</task-id>\n<tool-use-id>${TOOL_USE_ID}</tool-use-id>\n` +
+    `<output-file>${OUTPUT_FILE}</output-file>\n<status>completed</status>\n` +
+    '<summary>Agent "Critic pass: overnight closeout #30/#34/#35" finished</summary>\n' +
+    '<note>A task-notification fires each time this agent stops with no live background children of its own.</note>\n' +
+    `<result>${RESULT}</result>\n` +
+    '<usage><subagent_tokens>93933</subagent_tokens><tool_uses>31</tool_uses><duration_ms>374019</duration_ms></usage>\n' +
+    '</task-notification>';
+
+  // (a) the real text capture: parsed, correlated, multi-line result and duration kept
+  const [real] = scanTaskNotifications(REAL_NOTIF);
+  check(
+    'real capture parsed (id, task-id, status, duration)',
+    real && real.body.toolUseId === TOOL_USE_ID && real.taskId === TASK_ID &&
+      real.body.taskId === TASK_ID && real.body.status === 'completed' &&
+      real.body.durationMs === 374019 && !real.degraded,
+    real,
+  );
+  check('multi-line <result> survives whole', real && real.body.result === RESULT, real?.body.result);
+
+  // (b) backfill replays the same capture into a dispatch_update (shared code path)
+  const tail = [
+    asst('u-38-1', T('0:05'), { type: 'tool_use', id: TOOL_USE_ID, name: 'Agent', input: { description: 'Critic pass', run_in_background: true } }, 'end_turn', 'msg_38'),
+    toolResult('u-38-2', T('0:05'), TOOL_USE_ID, `Async agent launched successfully.\nagentId: ${TASK_ID}`),
+    userPrompt('u-38-3', T('0:06'), REAL_NOTIF),
+  ];
+  const plan = planBackfill({ events: baseEvents, transcript: lines([...consumedEntries, ...tail]), threads: [] });
+  const du = plan.planned.find((p) => p.body.type === 'dispatch_update');
+  check(
+    'backfill emits the update from the real capture',
+    du && du.body.toolUseId === TOOL_USE_ID && du.body.durationMs === 374019 && du.body.result === RESULT,
+    du?.body,
+  );
+
+  // (c) THE LIVE FORM — the shape that actually reaches a running server
+  const live = dispatchUpdateFromSystemNotification({
+    type: 'system', subtype: 'task_notification',
+    task_id: TASK_ID, tool_use_id: TOOL_USE_ID, status: 'completed',
+    output_file: OUTPUT_FILE, summary: 'Agent "Critic pass" finished',
+    usage: { total_tokens: 93933, tool_uses: 31, duration_ms: 374019 },
+  });
+  check(
+    'system/task_notification -> dispatch_update',
+    live && live.body.type === 'dispatch_update' && live.body.toolUseId === TOOL_USE_ID &&
+      live.body.status === 'completed' && live.body.taskId === TASK_ID &&
+      live.body.durationMs === 374019 && !live.degraded,
+    live,
+  );
+  check(
+    "live 'failed' and 'stopped' both land as failed (not running)",
+    dispatchUpdateFromSystemNotification({ task_id: TASK_ID, tool_use_id: TOOL_USE_ID, status: 'failed' }).body.status === 'failed' &&
+      dispatchUpdateFromSystemNotification({ task_id: TASK_ID, tool_use_id: TOOL_USE_ID, status: 'stopped' }).body.status === 'failed',
+  );
+
+  // (d) correlation fallback: no tool_use_id, but task_started taught us the mapping
+  const viaTaskId = dispatchUpdateFromSystemNotification(
+    { task_id: TASK_ID, status: 'completed', summary: 'finished' },
+    (id) => (id === TASK_ID ? TOOL_USE_ID : undefined),
+  );
+  check(
+    'task-id fallback correlates and is flagged degraded',
+    viaTaskId && viaTaskId.body.toolUseId === TOOL_USE_ID && viaTaskId.degraded === true,
+    viaTaskId,
+  );
+  check(
+    'no id at all -> null (the ONLY case a card may keep ticking)',
+    dispatchUpdateFromSystemNotification({ task_id: 'unknown', status: 'completed' }) === null,
+  );
+
+  // (e) degrade-to-correct: a block we cannot read still completes off a bare id
+  const garbled = scanTaskNotifications(
+    `<task-notification>\n<toolUseID>${TOOL_USE_ID}</toolUseID>\n<state>done</state>\n<summary>Agent finished</summary>\n</task-notification>`,
+  );
+  check(
+    'unparseable block -> completion off the bare toolu_ id, degraded',
+    garbled.length === 1 && garbled[0].body.toolUseId === TOOL_USE_ID &&
+      garbled[0].body.status === 'completed' && garbled[0].degraded === true,
+    garbled,
+  );
+  check(
+    'a block with no toolu_ id anywhere is still dropped',
+    scanTaskNotifications('<task-notification>\n<state>done</state>\n</task-notification>').length === 0,
+  );
+
+  // (f) more than one notification can share a message
+  const two = scanTaskNotifications(
+    `preamble\n${REAL_NOTIF}\n<task-notification>\n<task-id>bbb</task-id>\n<tool-use-id>toolu_second1</tool-use-id>\n<status>failed</status>\n<summary>Background command failed</summary>\n</task-notification>\ntrailer`,
+  );
+  check(
+    'two notifications in one message -> two updates',
+    two.length === 2 && two[0].body.toolUseId === TOOL_USE_ID && two[1].body.toolUseId === 'toolu_second1' &&
+      two[1].body.status === 'failed',
+    two.map((n) => n.body),
+  );
+
+  // (g) supersede-on-repeat: a resumed agent notifies again, latest wins
+  const repeat = [
+    ...tail,
+    userPrompt('u-38-4', T('0:07'), `<task-notification>\n<task-id>${TASK_ID}</task-id>\n<tool-use-id>${TOOL_USE_ID}</tool-use-id>\n<status>failed</status>\n<summary>Agent stopped on resume</summary>\n</task-notification>`),
+  ];
+  const plan2 = planBackfill({ events: baseEvents, transcript: lines([...consumedEntries, ...repeat]), threads: [] });
+  const updates = plan2.planned.filter((p) => p.body.type === 'dispatch_update');
+  check(
+    'repeat notification supersedes: one update, the later one',
+    updates.length === 1 && updates[0].body.status === 'failed' && updates[0].body.summary === 'Agent stopped on resume',
+    updates.map((p) => p.body),
+  );
+
+  // (h) the live form carries no report — it is recovered from output_file, which is
+  // a symlink to the subagent's own JSONL transcript (verified against a real run).
+  const SUBAGENT_JSONL = [
+    JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'hmm' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: RESULT }] } }),
+  ].join('\n');
+  check(
+    'report recovered from a JSONL output_file (last assistant text)',
+    readTaskOutputReport(OUTPUT_FILE, () => SUBAGENT_JSONL) === RESULT,
+    readTaskOutputReport(OUTPUT_FILE, () => SUBAGENT_JSONL),
+  );
+  check('plain-text output_file used as-is', readTaskOutputReport(OUTPUT_FILE, () => `  ${RESULT}  `) === RESULT);
+  check('empty output_file -> no report', readTaskOutputReport(OUTPUT_FILE, () => '') === undefined);
+  check('absent output_file -> no report', readTaskOutputReport(undefined) === undefined);
+  check(
+    'unreadable output_file never throws',
+    readTaskOutputReport(OUTPUT_FILE, () => { throw new Error('ENOENT'); }) === undefined,
+  );
 }
 
 // ---------- 12. delta-journal recovery (task #24 — the last loss window) ----------
