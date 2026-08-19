@@ -86,6 +86,22 @@ export function startFixtureServer(port = 4123) {
       return;
     }
 
+    // QA trigger: install a canned decision ledger for the Decisions-panel captures.
+    // It lands in the same in-memory override map that backs project-file reads, so
+    // NOTHING is written to disk — the repo's real .clyde/DECISIONS.md is untouched —
+    // and the edit/delete shots stop tracking whatever the newest real ruling happens
+    // to be. The real ledger is still what 10c captures.
+    if (url.pathname === '/fixture/decisions' && req.method === 'POST') {
+      const chunks = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        overrides.set('.clyde/DECISIONS.md', Buffer.concat(chunks).toString('utf8'));
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      });
+      return;
+    }
+
     // QA readback: the project-file writes the UI has actually POSTed.
     if (url.pathname === '/fixture/file-writes') {
       res.writeHead(200, { 'content-type': 'application/json' });

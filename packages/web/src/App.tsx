@@ -262,7 +262,7 @@ export default function App() {
                   />
                 )}
                 {capability === 'git' && <GitPanel commits={state.commits} focusSha={focusSha} />}
-                {capability === 'decisions' && <DecisionsPanel />}
+                {capability === 'decisions' && <DecisionsPanel pushed={state.decisionsMarkdown} />}
                 {capability === 'reviews' && <ReviewsPanel tasks={state.tasks} />}
                 {capability === 'artifacts' && <PushedPanels panels={state.panels} />}
                 {capability === 'agents' && <AgentsPanel events={state.events} />}

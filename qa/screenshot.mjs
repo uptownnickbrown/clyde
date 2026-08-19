@@ -303,6 +303,42 @@ try {
   await page.waitForSelector('.decision-card');
   await shot('10c-decisions-panel');
 
+  // A canned ledger for the edit/delete shots: deterministic (the real file grows every
+  // session) and it carries both ruling kinds, so the deferred card's own accent is in
+  // the capture. In-memory in the fixture — the repo's ledger is not touched.
+  await page.request.post(`http://localhost:${PORT}/fixture/decisions`, {
+    data: [
+      '# Decisions',
+      '',
+      'The distilled rulings from resolved discussions. The argument may compact away; the ruling survives.',
+      '',
+      '- Decided: threading is a presentation layer over one linear conversation, never context forking — because it keeps the model coherent and makes the POC tractable (2026-08-18)',
+      '- Deferred: bulk operations on the ledger (multi-select delete, reorder) — revisit when one wave lands more than ten rulings (2026-08-19)',
+      '- Decided: deleting a ruling from the panel is real deletion, not a strike-through — because git already holds the history and the ledger is the present (2026-08-19)',
+      '',
+    ].join('\n'),
+    headers: { 'content-type': 'text/markdown' },
+  });
+  await rail('Logs'); // remount the panel so it re-reads the ledger
+  await rail('Decisions');
+  await page.waitForSelector('.decision-card.deferred');
+  await shot('10c1-decisions-both-kinds');
+
+  // 10c2 — a ruling open for edit: the card flips to the raw one-line ledger form (#40).
+  // The affordance only; the SAVE path's semantics are asserted offline by
+  // qa/decisions-check.mjs against the real policy module, because reproducing them in
+  // the fixture would mean a second, divergent implementation of the ledger rules.
+  await page.locator('.decision-card').first().locator('.decision-btn').first().click();
+  await page.waitForSelector('.decision-edit textarea');
+  await shot('10c2-decision-edit');
+  await page.locator('.decision-edit-row button', { hasText: 'Cancel' }).click();
+
+  // 10c3 — delete armed: an inline confirm on the card, same pattern as New session
+  await page.locator('.decision-card').first().locator('.decision-btn').nth(1).click();
+  await page.waitForSelector('.decision-confirm');
+  await shot('10c3-decision-delete-confirm');
+  await page.locator('.decision-confirm .linklike', { hasText: 'Cancel' }).click();
+
   // 11 — logs panel
   await rail('Logs');
   await page.waitForTimeout(400);

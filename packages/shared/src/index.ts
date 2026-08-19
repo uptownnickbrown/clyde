@@ -50,6 +50,27 @@ export interface TaskItem {
   commit?: string;
 }
 
+// ---------- Decisions (the ruling ledger, .clyde/DECISIONS.md) ----------
+
+/** One user edit to a single ruling line of `.clyde/DECISIONS.md` (POST /api/decisions).
+ *
+ *  The ledger is a markdown file the AGENT appends to while the user is looking at it,
+ *  so this is deliberately not a whole-file PUT: the target is identified by the exact
+ *  text of the line the panel rendered, and the server re-reads the file at write time.
+ *  A ruling that moved (or an append that landed in between) can therefore never be
+ *  clobbered, and every line the client did not send — preamble, headings, blank lines,
+ *  bullets in a shape nothing parses — round-trips untouched because it is never
+ *  transmitted at all.
+ */
+export interface DecisionEdit {
+  /** The ruling line exactly as it appears in the file (leading `- Decided:` /
+   *  `- Deferred:` included). Must match exactly one line, or the edit is refused. */
+  original: string;
+  /** The replacement ruling line, in the same one-line ledger grammar. Omit — or send
+   *  null — to DELETE the ruling outright (git is the history; the ledger is current). */
+  text?: string | null;
+}
+
 // ---------- Questions (AskUserQuestion interception) ----------
 
 /** One option of a structured question. `preview` is an optional HTML fragment
@@ -325,6 +346,11 @@ export type ServerMessage =
   | { type: 'git_status'; status: GitStatus }
   /** SCOPE.md changed on disk (the user saved it from the Goal panel). */
   | { type: 'goal'; markdown: string }
+  /** .clyde/DECISIONS.md changed on disk (the user edited or deleted a ruling from the
+   *  Decisions panel). Carries the whole file as the server wrote it — the panel
+   *  re-parses rather than trusting its own optimistic draft. Agent writes to the same
+   *  file do NOT broadcast; the panel's poll catches those. */
+  | { type: 'decisions'; markdown: string }
   /** Aside lifecycle — TRANSIENT by design. Like delta/queue/threads these are
    *  broadcasts, not SessionEvents: nothing is appended to events.jsonl and no
    *  snapshot replays them, so a reload drops aside cards (v1 ruling: an aside

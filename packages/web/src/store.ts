@@ -33,6 +33,11 @@ export interface UIState {
   connected: boolean;
   projectName: string;
   goalMarkdown: string | null;
+  /** .clyde/DECISIONS.md as the server last wrote it, set ONLY by the `decisions`
+   *  broadcast (a user edit from the panel). Null until then: the ledger is not part of
+   *  the hello snapshot — the Decisions panel loads and polls the file itself, which is
+   *  also what catches the agent's own appends. */
+  decisionsMarkdown: string | null;
   events: SessionEvent[];
   threads: Thread[];
   queue: QueuedItem[];
@@ -63,6 +68,7 @@ const initial: UIState = {
   connected: false,
   projectName: '',
   goalMarkdown: null,
+  decisionsMarkdown: null,
   events: [],
   threads: [],
   queue: [],
@@ -215,6 +221,8 @@ function reducer(state: UIState, action: Action): UIState {
           return { ...state, gitStatus: msg.status };
         case 'goal':
           return { ...state, goalMarkdown: msg.markdown };
+        case 'decisions':
+          return { ...state, decisionsMarkdown: msg.markdown };
         case 'aside_started':
           return {
             ...state,

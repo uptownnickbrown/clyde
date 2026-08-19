@@ -251,6 +251,36 @@ button.linklike:disabled { opacity: 0.55; cursor: default; }
 }
 .decision-rest { color: var(--text-dim); font-size: 12px; margin-top: 5px; line-height: 1.5; }
 .decision-date { color: var(--text-faint); font-size: 10.5px; margin-top: 6px; font-family: var(--mono); }
+/* A deferred axis is a ruling too, but a quieter one: cyan rail + cyan chip, so the
+   mint spine stays the mark of a settled decision. */
+.decision-card.deferred { border-left-color: var(--accent); }
+.decision-chip.deferred { background: var(--accent-soft); color: var(--accent); }
+/* Edit + delete affordances: float right of the ruling, dim until the card is hovered
+   so a ledger reads as prose first and a workbench second. */
+.decision-actions { float: right; display: flex; gap: 8px; align-items: center; margin: -1px 0 0 8px; }
+.decision-btn { font-size: 12px; color: var(--text-faint); }
+.decision-card:hover .decision-btn { color: var(--accent); }
+.decision-confirm {
+  clear: both; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border-soft);
+  font-size: 11.5px; color: var(--text-dim);
+}
+.decision-confirm .linklike { font-size: 11.5px; }
+.decision-confirm .linklike.danger { color: var(--danger); }
+.decision-edit { display: flex; flex-direction: column; gap: 7px; }
+.decision-edit textarea {
+  width: 100%; min-height: 96px; resize: vertical; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+}
+.decision-edit textarea:focus { outline: none; border-color: var(--accent); }
+.decision-edit-row { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.decision-edit-row button {
+  background: var(--bg-raised); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4.5px 12px; font-size: 12px;
+}
+.decision-edit-note { font-size: 11px; color: var(--text-faint); }
+.decision-edit-note.decision-edit-error { color: var(--danger); }
 
 /* ---------- agents panel ---------- */
 .agents-panel { padding: 4px 8px; }
