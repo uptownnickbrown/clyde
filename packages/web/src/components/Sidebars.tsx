@@ -702,9 +702,32 @@ export function ReviewsPanel({ tasks }: { tasks: TaskItem[] }) {
 }
 
 /** Burn-down over one intake batch. Settled = completed + declined — a reasoned
- *  "no" burns down the same as a "done"; only undecided/undone items keep it open. */
+ *  "no" burns down the same as a "done"; only undecided/undone items keep it open.
+ *  The raw dump resolves through the batch tasks' source.review path first (#39):
+ *  non-ceremony batches (e.g. critic verdicts) keep their provenance outside
+ *  .clyde/reviews/, and a batch whose file is on neither path gets an honest
+ *  explanation, not the server's bare 404 body rendered as markdown. */
 function BatchCard({ batch, tasks }: { batch: string; tasks: TaskItem[] }) {
   const [showRaw, setShowRaw] = useState(false);
+  // undefined = not yet resolved; string = first candidate that exists; null = none do.
+  const [dumpPath, setDumpPath] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!showRaw || dumpPath !== undefined) return;
+    const fromTasks = tasks.find((t) => t.source?.review)?.source?.review;
+    const candidates = [...new Set([fromTasks, `.clyde/reviews/${batch}.md`])].filter(
+      (p): p is string => !!p,
+    );
+    void (async () => {
+      for (const p of candidates) {
+        const r = await fetch(`/api/project-file?path=${encodeURIComponent(p)}`).catch(() => null);
+        if (r?.ok) {
+          setDumpPath(p);
+          return;
+        }
+      }
+      setDumpPath(null);
+    })();
+  }, [showRaw, dumpPath, tasks, batch]);
   const glyph = { pending: '○', in_progress: '◐', completed: '✓', declined: '✗' } as const;
   const settled = tasks.filter((t) => t.status === 'completed' || t.status === 'declined').length;
   const declined = tasks.filter((t) => t.status === 'declined').length;
@@ -734,7 +757,13 @@ function BatchCard({ batch, tasks }: { batch: string; tasks: TaskItem[] }) {
       <button className="linklike" onClick={() => setShowRaw(!showRaw)}>
         {showRaw ? 'hide raw dump' : 'show raw dump'}
       </button>
-      {showRaw && <FileMarkdown path={`.clyde/reviews/${batch}.md`} />}
+      {showRaw && typeof dumpPath === 'string' && <FileMarkdown path={dumpPath} />}
+      {showRaw && dumpPath === null && (
+        <div className="review-legacy-note">
+          raw dump not on disk — the batch's provenance file may be gitignored or pre-date the
+          intake ceremony
+        </div>
+      )}
     </section>
   );
 }

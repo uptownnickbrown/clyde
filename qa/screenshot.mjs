@@ -284,6 +284,17 @@ try {
   await page.waitForTimeout(500);
   await shot('10-reviews-panel');
 
+  // 10c — raw-dump resolution (#39): this batch's dump exists on neither its
+  // source.review path nor .clyde/reviews/<batch>.md, so the click must yield the
+  // honest missing-state note — never the server's 404 body rendered as markdown.
+  await page.locator('.batch-card .linklike').first().click();
+  await page.waitForSelector('.batch-card .review-legacy-note');
+  const dumpNote = await page.locator('.batch-card .review-legacy-note').textContent();
+  if (!dumpNote?.includes('not on disk'))
+    throw new Error(`raw-dump missing state: expected the honest note, got "${dumpNote}"`);
+  await shot('10d-reviews-raw-dump-missing');
+  await page.locator('.batch-card .linklike').first().click(); // collapse again
+
   // 10b — agents panel: one completed dispatch, one running with the delegated-task link
   await rail('Agents');
   await page.locator('.agents-panel .linklike').first().click(); // expand newest prompt

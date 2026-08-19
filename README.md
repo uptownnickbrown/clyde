@@ -117,7 +117,7 @@ One process = one project. Clyde finds or creates `.clyde/` there and serves the
 ### QA loop
 
 ```bash
-npm run qa:screens      # build + capture 39 deterministic UI states (+1 live shot), with behavioral assertions
+npm run qa:screens      # build + capture 40 deterministic UI states (+1 live shot), with behavioral assertions
 npm run docs:shots      # regenerate the README screenshots from the same fixture — doc images can't drift
 npm run qa:backfill     # offline checks over resume/backfill/normalization
 node qa/live-drive.mjs  # drive a live session through the real UI: threads, commits,
