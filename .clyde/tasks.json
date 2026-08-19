@@ -195,8 +195,9 @@
   {
     "id": "30",
     "subject": "README thesis rewrite: never-read-the-code leads, our density kept",
-    "status": "pending",
-    "detail": "Merge the reviewer's draft into the current README per the 2026-08-18 ruling: lead with the provocative question + the two pillars (craft/rigor quotes preserved near-verbatim), compressed hard — no one-sentence-per-line manifesto cadence; keep the concrete sections, screenshots, and tables; mark unbuilt items as direction; identity line moves inside (amends the identity-line-leads ruling knowingly). SCOPE.md already carries the north star (committed with this prep). Good candidate to write AFTER #26/#27 land so 'the agent proves its work' describes shipped behavior.",
+    "status": "completed",
+    "commit": "e855292",
+    "detail": "Merge the reviewer's draft into the current README per the 2026-08-18 ruling: lead with the provocative question + the two pillars (craft/rigor quotes preserved near-verbatim), compressed hard — no one-sentence-per-line manifesto cadence; keep the concrete sections, screenshots, and tables; mark unbuilt items as direction; identity line moves inside (amends the identity-line-leads ruling knowingly). SCOPE.md already carries the north star (committed with this prep). Good candidate to write AFTER #26/#27 land so 'the agent proves its work' describes shipped behavior. DONE (e855292), written last as planned: provocative question + both pillars lead near-verbatim, north-star line + per-feature test up top, identity line moved inside, no manifesto cadence; Why/threads/ceremony/decisions/files/run sections kept at density; NEW sections 'The agent proves its work' (response contract, authored evidence, critic, provenance — all shipped, none marked direction because none is), 'Ask without steering' (/btw), 'One agent in front' (agent-type economics); env table gained CLYDE_SUBAGENT_MODEL/CLYDE_ASIDE_MODEL; QA section names 42 states + 8 live-drive flows; closes on the proven-to-work framing the user loved.",
     "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
     "batch": "2026-08-19-reviewer-brainstorm"
   },
@@ -217,13 +218,15 @@
   {
     "id": "34",
     "subject": "CSP hardening for /api/project-file responses",
-    "status": "pending",
-    "detail": "Follow-up flagged by the #33 renderer agent: add Content-Security-Policy: sandbox (or equivalent) to GET /api/project-file responses so a DIRECT navigation to agent-authored HTML is hardened in depth. The UI already never offers a top-level load (iframe-only, by ruling), so this is belt-and-suspenders; it changes the response headers for every project file, so land it deliberately, batched with the next server-src wave, and re-run the 33x fixture asserts (frameLocator flows must keep working)."
+    "status": "completed",
+    "commit": "d13c955",
+    "detail": "Follow-up flagged by the #33 renderer agent, DONE (d13c955): GET /api/project-file responses carry Content-Security-Policy: sandbox allow-scripts — a direct navigation to agent-authored HTML gets an opaque origin (no Clyde APIs, no localStorage) while the exhibit iframe's allow-scripts flow is unchanged. Verified: 33x fixture asserts green (frameLocator still executes the plot's script) and the header confirmed live on the running server."
   },
   {
     "id": "35",
     "subject": "Left-rail audit: right items, right order, informative AND actionable",
-    "status": "in_progress",
-    "detail": "User-directed (2026-08-19, overnight mandate): are the left rail's items (1) the right set, (2) in the right order with the right hierarchy, and (3) does each panel carry content that is both informative and actionable? Audit every panel from the 40 fixture states, judge against 'orientation in ten seconds', the response contract, and the north-star confidence test; implement what falls out. Sweep general polish from visual QA of all states in the same pass."
+    "status": "completed",
+    "commit": "ea8765d",
+    "detail": "User-directed (2026-08-19, overnight mandate), DONE (ea8765d + 3ea6eaf). Verdicts from visual QA of every panel: (1) the SET is right — ten items, each earning its lifecycle; nothing added (file tree stays future per SCOPE). (2) ORDER was wrong — now tells the loop: Goal → Tasks → Git → Agents → Artifacts → Decisions → Reviews, with Activity/Context/Logs bottom-anchored behind a hairline as the system cluster (introspection, apart from the working loop). (3) CONTENT: Activity was the worst offender (bare '14:12 Read' rows, lone ✓ rows) — rebuilt: one row per call, result glyph joined (✓/✗/⋯), the call's OBJECT shown (file, command, pattern, title), subagent dispatches as group headers; Reviews' legacy checklists collapsed to provenance-labeled summary rows (they read as open work when they are history — the user's exact complaint); Context drops node_modules noise and ranks by touches; commit expansion drops git-show's duplicate Author/Date preamble; empty tool-only assistant messages no longer render as empty bubbles. Tasks/Agents/Artifacts/Decisions/Goal/Logs judged strong as-is. Ceremony linkage tightened alongside (3ea6eaf): the review file must name spawned decisions. Gates: typecheck, 42 captures green, backfill green."
   }
 ]
