@@ -2,6 +2,15 @@
 
 **Clyde = Claude + IDE.** An opinionated local app for running long, ambitious, agent-driven builds — where the *conversation* is the center document, not the code.
 
+## North star (sharpened 2026-08-18)
+
+**Make it safe and intelligible to build software without needing to read the code.** Two pillars:
+
+- **Craft:** the goal isn't to make software development easier by caring less about the implementation — it's to make it possible to care *more about the product* without having to inspect the implementation.
+- **Rigor:** you don't have to read the code; you do have to prove it works. The burden of proof gets *higher*, not lower.
+
+Every feature faces the test: *does this increase the user's justified confidence in the product without requiring them to inspect the implementation?* Companion hook (public/provocative): "What would an IDE look like if you never read the code?"
+
 ## The problem
 
 Claude Code's terminal transcript is a log. But for a developer who works by (1) handing a frontier model an ambitious scope doc, (2) letting it run in auto mode with aggressive subagent delegation, and (3) shaping the project almost entirely by *reading and responding to what the primary agent says* — the log is the wrong data structure. Real pains, in order:
@@ -62,7 +71,7 @@ An IDE makes you instantly oriented in a *codebase*: file tree, editor at center
 
 ### Orientation features
 
-- **Catch me up.** Returning to a live/paused session generates a brief: what happened since you last looked, what's in flight, what needs your eyes.
+- **Needs my eyes** (supersedes "Catch me up," 2026-08-18). The right workbench is the attention surface — question cards, review intake, and blocking exhibits the model pushes for approval — and that *is* the needs-my-eyes lens. No generic catch-me-up blurb feature; orientation is carried by the session header, minimap, panels, and attention surface.
 - **Session header.** Goal one-liner · current chapter · task in progress · context gauge · agent status (working / idle / waiting on you), always visible.
 
 ## Architecture
@@ -86,6 +95,18 @@ clyde/                      # npm workspaces monorepo, TypeScript throughout
 **In:** everything under Product spec above, at POC polish: launch CLI, conversation document with span comments/threads/queue+interrupt, tool suppression + activity feed, the seven panels, catch-me-up, event log persistence + session resume.
 
 **Out (v2+):** true context eviction (transcript-rewrite fork — spike first); multi-project daemon; pre-Clyde transcript import; multiple live sessions; collaborative/multi-user; editing code in-app; mobile.
+
+**Won't do:** intent-level rewind ("take me back before we decided X") — requires transcript-rewrite-and-fork plus coordinated multi-noun rollback and strains the one-linear-conversation invariant; git checkpoints remain the recovery story (2026-08-18).
+
+## Next wave — verification & evidence (settled 2026-08-18)
+
+If the human doesn't read the code, **verification becomes the new code review**. The wave, in build order:
+
+1. **Blocking exhibits.** Generalize the model→UI push so *anything needing judgment* renders on the attention surface with approve/decline (+comment) semantics that flow back to the agent: screenshot sets pending review, data tables, ad hoc HTML artifacts, metrics. The affordance is generic because "quality" looks different per project (UI vs API vs data vs ML).
+2. **Critic agent type.** Coordinator-dispatched, read-only (no write tools), briefed with the goal + success criteria + diff + QA evidence, tasked with finding reasons *not* to accept. Surfaces its verdict (via blocking exhibits) when it believes the bar is met or needs human judgment; verdict attaches to the task. The quality bar derives from this doc per project, never a fixed rubric.
+3. **/btw asides.** Composer toggle marking a message ephemeral: answered by a read-only observer query over `.clyde/` + git + the event log, never entering the primary agent's context or the conversation document.
+4. **Provenance.** Edges over existing files (task→closing commit, evidence→task, verdict→task), improved opportunistically as the critic/evidence work needs them — no graph machinery.
+5. **README thesis rewrite.** Thesis-first at our density; the two pillars lead, concrete sections and screenshots stay, futures marked as direction.
 
 **Spikes to run early** (cheap, de-risk the architecture):
 1. SDK streaming-input session: push messages over time, interrupt, resume — confirm auth inherits the local Claude Code login.

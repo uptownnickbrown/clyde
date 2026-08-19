@@ -150,5 +150,45 @@
     "subject": "Responsive layout pass (Design Vision §5)",
     "status": "completed",
     "detail": "DONE (a38b5f9, wave-3 train): wide ≥1280 unchanged (resizers + persistence); medium <1280 one auxiliary surface at a time (React matchMedia coordination); narrow <960 capability panels + workbench become overlay drawers with scrim over a full-width conversation; phone <680 condensed top bar (no gauge/cost), rail-only nav, near-full-width drawers. localStorage describes the wide layout only; below-wide toggles are transient. Gates: all fixture captures unchanged at 1440x900 + new 20a-medium/20b-narrow-drawer/20c-phone with behavioral assertions (not just pixels)."
+  },
+  {
+    "id": "26",
+    "subject": "Blocking exhibits: approve/decline pushes to the attention surface",
+    "status": "pending",
+    "detail": "Generalize the model→UI push so anything needing judgment lands in the right workbench as a BLOCKING exhibit with approve/decline (+comment) semantics that flow back to the agent as a structured result: screenshot sets pending approval, data tables, ad hoc HTML artifacts, metrics. Likely a request_review sibling to push_panel (or a blocking flag + response channel on it). Attention-badged like question cards; outcome recorded against the task that pushed it. This IS the needs-my-eyes maturation per the 2026-08-18 ruling — the surface exists (#15/#21); this generalizes what can land there and adds the approval loop. Flexibility is the point: quality looks different for UI vs API vs data vs ML projects, so the affordance is content-generic. Build FIRST — #27's verdicts ride it.",
+    "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
+    "batch": "2026-08-19-reviewer-brainstorm"
+  },
+  {
+    "id": "27",
+    "subject": "Critic agent type: adversarial verification before acceptance",
+    "status": "pending",
+    "detail": "Formalize a read-only critic subagent (no write tools, separate context): brief template = goal + success criteria from SCOPE, the diff/commits under review, QA artifacts; tasked with finding reasons NOT to accept, never with fixing. Coordinator-dispatched per the 2026-08-18 ruling (extends the CLAUDE.md agent-ops doctrine; the human stays final judge). Doctrine: when it runs (task-close/merge gates, judgment calls), how its verdict surfaces — via #26's blocking exhibits when it believes the bar is met or needs judgment — and verdict→task provenance. Quality bar derives from the goal doc per project type, never a fixed rubric. Standing orders + CLAUDE.md updates included. Depends on #26.",
+    "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
+    "batch": "2026-08-19-reviewer-brainstorm"
+  },
+  {
+    "id": "28",
+    "subject": "Composer /btw toggle: ephemeral asides via observer query",
+    "status": "pending",
+    "detail": "A toggle on the composer marks a message as an aside: answered by an ephemeral READ-ONLY observer SDK query over .clyde/ state, git, and the event log — never entering the primary agent's context or the conversation document (zero context pollution; threads already cover anchored asides). Renders as an ephemeral card (thread-like presentation); single-shot Q&A first, no follow-up threading until it earns it. Cheap model candidate; separate cost accounting so asides don't muddy the session gauge.",
+    "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
+    "batch": "2026-08-19-reviewer-brainstorm"
+  },
+  {
+    "id": "29",
+    "subject": "Provenance edges: verdict→task, evidence→task, task→closing commit",
+    "status": "pending",
+    "detail": "Per the edges-over-existing-files ruling (2026-08-18): no graph machinery — add the missing links opportunistically as #26/#27 create them. verdict→task and evidence(exhibit)→task land with those tasks; task→closing commit extends commits.json/tasks.json so a completed task can point at the commit(s) that closed it and the UI can walk goal→conversation→task→decision→commit→evidence→verdict from a task or commit card ('why is this done?'). Rides the wave; do not build standalone infrastructure.",
+    "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
+    "batch": "2026-08-19-reviewer-brainstorm"
+  },
+  {
+    "id": "30",
+    "subject": "README thesis rewrite: never-read-the-code leads, our density kept",
+    "status": "pending",
+    "detail": "Merge the reviewer's draft into the current README per the 2026-08-18 ruling: lead with the provocative question + the two pillars (craft/rigor quotes preserved near-verbatim), compressed hard — no one-sentence-per-line manifesto cadence; keep the concrete sections, screenshots, and tables; mark unbuilt items as direction; identity line moves inside (amends the identity-line-leads ruling knowingly). SCOPE.md already carries the north star (committed with this prep). Good candidate to write AFTER #26/#27 land so 'the agent proves its work' describes shipped behavior.",
+    "source": { "review": ".clyde/uploads/2026-08-19T00-27-15-feedback.txt" },
+    "batch": "2026-08-19-reviewer-brainstorm"
   }
 ]
