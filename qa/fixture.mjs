@@ -278,5 +278,8 @@ export function buildSnapshot(projectRoot) {
     gitStatus: { branch: 'main', dirtyFiles: 3 },
     model: 'claude-fable-5',
     effort: 'xhigh',
+    // Differs from the session model on purpose: captures must show the chip's
+    // "agents: opus-5" suffix and the picker's Subagents section honestly.
+    subagentModel: 'claude-opus-5',
   };
 }
