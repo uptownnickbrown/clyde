@@ -771,7 +771,9 @@ export class AgentSession {
       `declined items get the same provenance with status "declined" and declineReason. Nothing is ` +
       `silently dropped — the Reviews panel burn-down counts both.\n` +
       `5. Append an "## Intake result" section to .clyde/reviews/${batch}.md: each numbered item with ` +
-      `→ task #<id>, or → declined: <reason>.\n` +
+      `→ task #<id>, or → declined: <reason>. If the ceremony settled any ruling (a clarifying answer ` +
+      `that changes standing direction), record it in DECISIONS.md as usual AND list it here as ` +
+      `→ decision: <first words of the ruling> — the review file must name everything it spawned.\n` +
       `Then continue normal work, taking up accepted items by priority.`
     );
   }
