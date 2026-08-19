@@ -3,10 +3,12 @@
 // live-fire), the New-session action, decision-ledger edits, and the origin gate.
 // Screenshots land in qa/screenshots/live-*.png.
 //
-// The decisions section (8b) edits .clyde/DECISIONS.md in the project under test and
-// restores it afterwards, so this must run against a SCRATCH project — it refuses to run
-// against the Clyde repo. It finds the project root from the server's boot log; set
-// CLYDE_LIVE_PROJECT=<path> to say so explicitly.
+// The decisions section (8b) seeds a .clyde/DECISIONS.md in the project under test,
+// edits it through the real route, and tears the seeded file down — it refuses to run
+// against the Clyde repo AND against any project whose ledger already exists (a
+// pre-existing ledger is agent state this harness must not clobber). It finds the
+// project root from the server's boot log; set CLYDE_LIVE_PROJECT=<path> to say so
+// explicitly.
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
