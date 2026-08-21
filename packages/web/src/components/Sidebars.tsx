@@ -486,7 +486,14 @@ export function GoalPanel({ markdown }: { markdown: string | null }) {
           ✎ Edit
         </button>
       </div>
-      {markdown ? <Md>{markdown}</Md> : <div className="empty">No SCOPE.md found in project root.</div>}
+      {markdown ? (
+        <Md>{markdown}</Md>
+      ) : (
+        <div className="empty">
+          No SCOPE.md in the project root — the north star every task and verdict is judged against. Ask Clyde to
+          draft one, or write it here.
+        </div>
+      )}
     </div>
   );
 }
