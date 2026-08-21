@@ -330,7 +330,8 @@
   {
     "id": "45",
     "subject": "Goal panel: honest empty state when no SCOPE.md exists yet",
-    "status": "pending",
-    "detail": "goalMarkdown === null currently renders an empty Goal panel with no explanation. Say what is true: no goal document yet, Clyde will draft one with you. Web-only copy/empty-state change, no new wire field."
+    "status": "completed",
+    "detail": "goalMarkdown === null currently renders an empty Goal panel with no explanation. Say what is true: no goal document yet, Clyde will draft one with you. Web-only copy/empty-state change, no new wire field.",
+    "commit": "25b29ac"
   }
 ]
